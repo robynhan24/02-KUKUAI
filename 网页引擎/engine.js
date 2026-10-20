@@ -231,6 +231,7 @@
         .ke .tm{font-variant-numeric:tabular-nums;font-size:14px;min-width:96px;text-align:right}
         .ke .big{position:absolute;inset:0;bottom:44px;display:none;align-items:center;justify-content:center;cursor:pointer}
         .ke .big span{width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:40px;padding-left:8px;border:2px solid rgba(255,255,255,.7)}
+        .ke .secs{display:flex;flex-wrap:wrap;gap:8px;padding:2px 2px 6px}
         .ke .snd{font-size:13px;color:#f5a524;white-space:nowrap}
         .ke .load{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:18px}`;
       document.head.appendChild(css);
@@ -244,7 +245,15 @@
       const snd = document.createElement('span'); snd.className = 'snd';
       const big = document.createElement('div'); big.className = 'big'; big.innerHTML = '<span>▶</span>';
       const load = document.createElement('div'); load.className = 'load'; load.textContent = '加载素材…';
-      bar.append(play, rng, tm, snd, exp); box.append(cv, bar, big, load); root.appendChild(box);
+      bar.append(play, rng, tm, snd, exp);
+      box.append(cv, bar, big, load);
+      // 分段跳转按钮
+      if (this.P.sections && this.P.sections.length > 1) {
+        const secs = document.createElement('div'); secs.className = 'secs';
+        for (const [st, name] of this.P.sections) { const b = document.createElement('button'); b.textContent = name; b.onclick = () => { this._unlock(); this.ready.then(() => { this.seek(st); if (!this.playing) this.play(); }); }; secs.appendChild(b); }
+        box.appendChild(secs);
+      }
+      root.appendChild(box);
       this.canvas = cv; this.ctx = cv.getContext('2d');
       this.ui = { play, rng, tm, exp, big, load, snd };
       play.onclick = () => { this._unlock(); this.ready.then(() => this.toggle()); };
