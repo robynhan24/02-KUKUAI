@@ -379,7 +379,7 @@
       const k = Math.min(B[2] / iw, B[3] / ih), w = iw * k, h = ih * k, x = B[0] + (B[2] - w) / 2, y = B[1] + (B[3] - h) / 2;
       const env = it => ease.inOut(prog(t, it.at, it.at + .4)) * (it.end != null ? 1 - ease.inOut(prog(t, it.end - .3, it.end)) : 1);
       const items = (o.focus || []).map(it => [it, env(it)]).filter(([, e]) => e > 0);
-      const blur = items.reduce((m, [, e]) => Math.max(m, e), 0);
+      const blur = Math.max(o.blur || 0, items.reduce((m, [, e]) => Math.max(m, e), 0));
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
       D.rr(ctx, x, y, w, h, 18); ctx.fillStyle = '#fff'; ctx.fill();

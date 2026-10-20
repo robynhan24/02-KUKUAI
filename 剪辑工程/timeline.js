@@ -1,6 +1,7 @@
 /* 库库AI 时间线 —— 风格：秋芝-豆包
  * 第 1 段 0–29.85：开头（成果前置、需求引入、预告流程）
- * 第 2 段 29.85–66.95：① 查文献（文献检索 Skill → 对接学术库 → 结构化梳理）
+ * 第 2 段 29.85–66.45：① 查文献（文献检索 Skill → 对接学术库 → 结构化梳理）
+ * 第 3 段 66.45–92.5：② 出报告（召唤教学设计专家 → 指令 → 报告结构 → 参考文献分级）
  * 口播时间 V（原口播秒数）→ 成片时间 T。剪掉超过 0.45 秒的停顿；插入的停顿放大标题。
  */
 (function () {
@@ -19,11 +20,13 @@
     [34.84, 44.48, 35.83],
     [44.91, 53.24, 45.47],
     [53.55, 66.10, 53.80],
+    // 66.35–67.65 插入：章节卡「② 出报告」
+    [66.47, 90.72, 67.65],
   ];
   const T = v => { for (const [a, b, t] of VOICE) if (v >= a - 0.05 && v <= b + 0.05) return t + (v - a); return null; };
   const V = t => { for (const [a, b, t0] of VOICE) if (t >= t0 && t <= t0 + (b - a)) return a + (t - t0); return null; };
-  const DUR = 66.95;
-  const SEG2 = 29.85;   // 第 2 段起点（预览页的「第 2 段」按钮跳到这里）
+  const DUR = 92.5;
+  const SEG2 = 29.85, SEG3 = 66.45;   // 各段起点（预览页的分段按钮跳到这里）
 
   /* ---------- 字幕（口播时间） ---------- */
   const SUBS = [
@@ -45,6 +48,14 @@
     [53.55, 55.55, '单纯检索文献还只是基本操作'], [55.75, 56.55, '更省心的是'], [56.56, 58.75, '可以对文献进行结构化梳理'],
     [59.05, 61.60, '针对14篇文献 建立完整论证框架'], [61.85, 64.05, '还分好了核心论据和补充资料'],
     [64.25, 66.05, '连研究缺口都给你点出来了'],
+    // 第 3 段
+    [66.47, 67.75, '有了完整的证据链'], [67.80, 69.30, '出报告就水到渠成了'],
+    [69.33, 71.40, '这里我们直接召唤教学设计专家'],
+    [71.74, 73.95, '围绕这个课题 再结合前面的工作成果'], [74.05, 76.40, '给一份符合教研规范的报告'],
+    [76.68, 77.55, '不过有一说一'], [77.60, 79.50, '我的高数早就还给老师了'],
+    [79.66, 81.50, '但单看这份报告的结构逻辑'], [81.52, 83.15, '就知道它不是东拼西凑'],
+    [83.32, 85.50, '而是顺着这个逻辑线铺下来的'],
+    [85.80, 87.60, '参考文献里哪些支撑核心结论'], [87.62, 89.30, '哪些是拓展参考'], [89.32, 90.72, '也都分得清清楚楚'],
   ].map(([a, b, s]) => [T(a), T(b), s]);
 
   /* ---------- 主播 ---------- */
@@ -402,7 +413,7 @@
   //     梳理结果整屏 → 放大开头一段（14 篇、四段论证、核心论据与补充资料）→ 翻到「实践效果」，放大研究缺口那句
   {
     const t0 = T(59.00), tGap = T(64.20);
-    scenes.push(recScene(t0, DUR, (t, E) => t < tGap ? {
+    scenes.push(recScene(t0, SEG3, (t, E) => t < tGap ? {
       el: E.image('sort0'), iw: 2560, ih: 1440,
       focus: [{ at: t0 + .35, r: [520, 585, 1980, 1055], marks: [
         { r: [865, 605, 1025, 655], at: T(59.38) }, { r: [1105, 605, 1960, 655], at: T(60.30), dur: 1.0 },
@@ -417,6 +428,79 @@
     }, { bg: { c2: 'rgba(57,200,114,.2)' } }));
   }
 
+  /* ================= 第 3 段：② 出报告 ================= */
+
+  // C 66.45–67.65 停顿：章节卡「② 出报告」亮起（① 已讲、③ 压暗），重击同帧
+  const CH2_HIT = 66.65;
+  scenes.push({ t0: SEG3, t1: 67.65, draw(ctx, t) { D.bg(ctx, t, { c2: 'rgba(245,223,39,.35)' }); navDraw(ctx, t, SEG3 - .4, [-1, -1, -1], 1, { hit: CH2_HIT }); } });
+
+  // 21  67.65–70.48 「有了完整的证据链，出报告就水到渠成了」真人
+  scenes.push(anchorFull(67.65, T(69.30)));
+
+  // 22  70.48–72.92 「这里我们直接召唤教学设计专家」整屏录屏 → 放大「召唤专家 › 教学设计专家」菜单
+  scenes.push(recScene(T(69.30), T(71.74), (t, E) => ({
+    el: E.video('c03e', t - T(69.30) + .05), iw: 2560, ih: 1440,
+    focus: [{ at: T(69.30) + .7, r: [540, 540, 1520, 1330], maxH: 760 }],
+  })));
+
+  // 23  72.92–77.78 「围绕这个课题，再结合前面的工作成果，给一份符合教研规范的报告」放大指令，跟着口播涂黄
+  scenes.push(recScene(T(71.74), T(76.60), (t, E) => ({
+    el: E.image('rp_prompt'), iw: 2560, ih: 1440,
+    focus: [{ at: T(71.74) + .3, r: [1135, 455, 2500, 800], marks: [
+      { r: [2078, 490, 2460, 535], at: T(72.00) }, { r: [1160, 550, 1640, 595], at: T(72.20) },
+      { r: [1160, 490, 1636, 535], at: T(72.95), dur: .5 },
+      { r: [1534, 668, 1880, 713], at: T(75.00), dur: .4 },
+    ] }],
+  })));
+
+  // 24  77.78–80.80 「不过有一说一，我的高数早就还给老师了」真人近景
+  scenes.push(anchorFull(T(76.60), T(79.62), { close: true }));
+
+  // 25  80.80–84.43 「但单看这份报告的结构逻辑，就知道它不是东拼西凑」报告整屏快速翻一遍（1.65 倍速）
+  scenes.push(recScene(T(79.62), T(83.25), (t, E) => ({ el: E.video('c03s', t - T(79.62)), iw: 2560, ih: 1440 })));
+
+  // 26  84.43–86.93 「而是顺着这个逻辑线铺下来的」四个大标题从报告里放大出来，沿一条线排下来
+  {
+    const t0 = T(83.25), t1 = T(85.75);
+    const HEADS = [['rp_h1', [540, 355, 815, 415]], ['rp_h2', [540, 455, 900, 520]], ['rp_h3', [540, 1090, 900, 1155]], ['rp_h4', [540, 640, 900, 705]]];
+    const at = i => T(83.60) + i * .32;
+    scenes.push({
+      t0, t1, draw(ctx, t, E) {
+        D.bg(ctx, t, { c2: 'rgba(245,223,39,.25)' });
+        // 背景：报告整屏，虚化压暗
+        D.rec(ctx, t, E.image('rp_h4'), 2560, 1440, { blur: ease.out(prog(t, t0, t0 + .3)) });
+        const cw = 820, ch = 148, gap = 52, top = 450 - (4 * ch + 3 * gap) / 2, cx = 1000;
+        // 逻辑线
+        const lp = ease.inOut(prog(t, at(0), at(3) + .3));
+        ctx.save(); ctx.strokeStyle = '#b9ff00'; ctx.lineWidth = 8; ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 22;
+        ctx.beginPath(); ctx.moveTo(cx - cw / 2 - 60, top + ch / 2); ctx.lineTo(cx - cw / 2 - 60, top + ch / 2 + lp * 3 * (ch + gap)); ctx.stroke(); ctx.restore();
+        HEADS.forEach(([n, r], i) => {
+          const k = ease.back(prog(t, at(i), at(i) + .32)); if (k <= 0) return;
+          const y = top + i * (ch + gap), im = E.image(n);
+          ctx.save(); ctx.translate(cx, y + ch / 2); ctx.scale(k, k); ctx.globalAlpha = clamp(k * 1.5);
+          ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
+          ctx.save(); D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.clip();
+          if (im) { const rw = r[2] - r[0], rh = r[3] - r[1], s = Math.min((cw - 80) / rw, (ch - 30) / rh); ctx.drawImage(im, r[0], r[1], rw, rh, -cw / 2 + 50, -rh * s / 2, rw * s, rh * s); }
+          ctx.restore();
+          ctx.lineWidth = 5; ctx.strokeStyle = '#ffaa42'; D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.stroke();
+          ctx.restore();
+          // 线上的节点
+          ctx.save(); ctx.globalAlpha = clamp(k); ctx.beginPath(); ctx.arc(cx - cw / 2 - 60, y + ch / 2, 18, 0, Math.PI * 2); ctx.fillStyle = '#b9ff00'; ctx.fill(); ctx.restore();
+        });
+        pip(ctx, t, E, t0 + .05, t1);
+      },
+    });
+  }
+
+  // 27  86.93–92.5 「参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」放大参考文献，先框核心论据，再框补充资料
+  scenes.push(recScene(T(85.75), DUR, (t, E) => ({
+    el: E.image('rp_refs'), iw: 2560, ih: 1440,
+    focus: [{ at: T(85.75) + .3, r: [520, 160, 2460, 1060], marks: [
+      { r: [540, 175, 700, 225], at: T(86.70) }, { r: [545, 250, 2450, 825], at: T(86.95), kind: 'box' },
+      { r: [540, 875, 700, 935], at: T(88.60) }, { r: [545, 950, 2450, 1060], at: T(88.85), kind: 'box' },
+    ] }],
+  }), { bg: { c1: 'rgba(245,223,39,.16)' } }));
+
   /* ---------- 音频 ---------- */
   const audio = [];
   VOICE.forEach(([a, b, t]) => audio.push({ asset: 'voice', at: t, from: a, dur: b - a, gain: 1, fadeIn: .02, fadeOut: .03 }));
@@ -428,8 +512,10 @@
   env.push([29.70, LOW], [29.95, .5], [30.45, 0]);
   audio.push({ asset: 'music', at: 0, from: 0, dur: 30.45, gain: 1, fadeIn: .3, fadeOut: .4, env });
   // 第 2 段换曲：章节卡重击时进，说话压低，段尾淡出
-  const env2 = [[CH1_HIT, .7], [31.0, .7], [31.15, LOW], [66.2, LOW], [66.5, .4], [DUR, 0]];
-  audio.push({ asset: 'music2', at: CH1_HIT - .05, from: 0, dur: DUR - CH1_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env2 });
+  const env2 = [[CH1_HIT, .7], [31.0, .7], [31.15, LOW], [66.2, LOW], [66.45, .5], [66.95, 0]];
+  audio.push({ asset: 'music2', at: CH1_HIT - .05, from: 0, dur: 66.95 - CH1_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env2 });
+  const env3 = [[CH2_HIT, .7], [67.6, .7], [67.75, LOW], [DUR - .6, LOW], [DUR, 0]];
+  audio.push({ asset: 'music3', at: CH2_HIT - .05, from: 0, dur: DUR - CH2_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .5, env: env3 });
   const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
   // 转场音：峰值对齐切点（whoosh 峰在 0.71 秒）
   sfx('whoosh', 1.95 - .62, .5); sfx('whoosh', 4.93 - .62, .45); sfx('swish', 11.99 - .7, .45);
@@ -454,6 +540,13 @@
   sfx('whoosh', T(55.70) - .62, .45); sfx('shine', T(57.72), .25);
   sfx('whoosh', T(59.00) - .62, .4); sfx('shine', T(59.38), .2); sfx('pop', T(62.60), .45);
   sfx('swish', T(64.20) - .7, .4); sfx('pop', T(64.50), .5);
+  // 第 3 段
+  sfx('rise', CH2_HIT - 1.43, .6); sfx('thud', CH2_HIT - .17, .85); sfx('dong', CH2_HIT - .21, .45);
+  sfx('whoosh', T(69.30) - .62, .45); sfx('pop', T(69.30) + .75, .35);
+  sfx('whoosh', T(71.74) - .62, .4); [T(72.00), T(72.95), T(75.00)].forEach(x => sfx('shine', x, .2));
+  sfx('whoosh', T(79.62) - .62, .45);
+  sfx('swish', T(83.25) - .7, .4); [0, 1, 2, 3].forEach(i => sfx('pop', T(83.60) + i * .32 + .15, .45));
+  sfx('whoosh', T(85.75) - .62, .45); sfx('pop', T(86.95), .45); sfx('pop', T(88.85), .45); sfx('shine', T(90.0), .3);
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -469,18 +562,23 @@
     c01: { type: 'video', src: { mp4: A + 'c01.mp4', webm: A + 'c01.webm' } },
     prompt: { type: 'image', src: A + 'prompt.jpg' }, cite: { type: 'image', src: A + 'cite.jpg' },
     sortp: { type: 'image', src: A + 'sortp.jpg' }, sort0: { type: 'image', src: A + 'sort0.jpg' },
+    c03e: { type: 'video', src: { mp4: A + 'c03e.mp4', webm: A + 'c03e.webm' } },
+    c03s: { type: 'video', src: { mp4: A + 'c03s.mp4', webm: A + 'c03s.webm' } },
+    rp_prompt: { type: 'image', src: A + 'rp_prompt.jpg' }, rp_refs: { type: 'image', src: A + 'rp_refs.jpg' },
+    rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, rp_h2: { type: 'image', src: A + 'rp_h2.jpg' },
+    rp_h3: { type: 'image', src: A + 'rp_h3.jpg' }, rp_h4: { type: 'image', src: A + 'rp_h4.jpg' },
     logo: { type: 'image', src: A + 'logo.png' },
-    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' },
+    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' },
   };
   for (const n of ['whoosh', 'swish', 'rise', 'thud', 'dong', 'pop', 'shine', 'scribble']) assets[n] = { type: 'audio', src: A + `sfx_${n}.mp3` };
 
   window.PROJECT = {
-    title: '库库AI_第1-2段_试剪', width: 1920, height: 1080, duration: DUR,
+    title: '库库AI_第1-3段_试剪', width: 1920, height: 1080, duration: DUR,
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
     assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
-    checks: [30.25, 31.6, 33.6, 35.4, 37, 41.2, 42.9, 44.9, 46.2, 48.3, 50.2, 53.3, 54.9, 58.4, 60.9, 63.5, 65.3, 66.6],
-    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献']],
+    checks: [66.9, 68.5, 71.0, 71.9, 73.5, 74.6, 77.0, 79.0, 82.0, 84.0, 85.6, 86.6, 88.5, 90.3, 91.9],
+    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告']],
     SUBS, T, V,
   };
 })();
