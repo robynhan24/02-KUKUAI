@@ -1,7 +1,8 @@
 /* 库库AI 时间线 —— 风格：秋芝-豆包
  * 第 1 段 0–29.85：开头（成果前置、需求引入、预告流程）
  * 第 2 段 29.85–66.45：① 查文献（文献检索 Skill → 对接学术库 → 结构化梳理）
- * 第 3 段 66.45–92.5：② 出报告（召唤教学设计专家 → 指令 → 报告结构 → 参考文献分级）
+ * 第 3 段 66.45–92.0：② 出报告（召唤教学设计专家 → 指令 → 报告结构 → 参考文献分级）
+ * 第 4 段 92.0–122.35：③ 做课件（调用仿真技能 → 交互课件）+ 沉淀个人 Skill + 手机远程
  * 口播时间 V（原口播秒数）→ 成片时间 T。剪掉超过 0.45 秒的停顿；插入的停顿放大标题。
  */
 (function () {
@@ -22,11 +23,15 @@
     [53.55, 66.10, 53.80],
     // 66.35–67.65 插入：章节卡「② 出报告」
     [66.47, 90.72, 67.65],
+    // 91.90–93.20 插入：章节卡「③ 做课件」
+    [91.18, 108.48, 93.20],
+    [108.93, 113.90, 110.50],
+    [114.22, 120.50, 115.47],
   ];
   const T = v => { for (const [a, b, t] of VOICE) if (v >= a - 0.05 && v <= b + 0.05) return t + (v - a); return null; };
   const V = t => { for (const [a, b, t0] of VOICE) if (t >= t0 && t <= t0 + (b - a)) return a + (t - t0); return null; };
-  const DUR = 92.5;
-  const SEG2 = 29.85, SEG3 = 66.45;   // 各段起点（预览页的分段按钮跳到这里）
+  const DUR = 122.35;
+  const SEG2 = 29.85, SEG3 = 66.45, SEG4 = 92.0;   // 各段起点（预览页的分段按钮跳到这里）
 
   /* ---------- 字幕（口播时间） ---------- */
   const SUBS = [
@@ -56,6 +61,14 @@
     [79.66, 81.50, '但单看这份报告的结构逻辑'], [81.52, 83.15, '就知道它不是东拼西凑'],
     [83.32, 85.50, '而是顺着这个逻辑线铺下来的'],
     [85.80, 87.60, '参考文献里哪些支撑核心结论'], [87.62, 89.30, '哪些是拓展参考'], [89.32, 90.72, '也都分得清清楚楚'],
+    // 第 4 段
+    [91.18, 92.82, '最后我们就能做出'], [92.82, 94.50, '开头那个能拖能转的3D课件'],
+    [94.75, 98.20, '直接调用「离线互动科学仿真HTML生成」技能'], [98.57, 100.55, '让它生成配套的3D交互课件'],
+    [100.99, 103.95, '它把三个知识点整合在了同一个三维曲面里'],
+    [104.32, 105.45, '拖动锚点或滑块'], [105.50, 107.15, '抽象概念的几何本质'], [107.40, 108.48, '一眼就能看明白'],
+    [108.93, 109.80, '整个流程走下来'], [109.85, 111.95, '还能沉淀成个人专属Skill'], [112.10, 113.90, '后续可以一键复用'],
+    [114.22, 115.20, '就算出门在外'], [115.22, 117.75, '手机也可以直接远程操作电脑干活'],
+    [118.02, 119.05, '工作照样继续跑'], [119.10, 120.50, '不用守在电脑旁边'],
   ].map(([a, b, s]) => [T(a), T(b), s]);
 
   /* ---------- 主播 ---------- */
@@ -508,13 +521,92 @@
   }
 
   // 27  86.93–92.5 「参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」放大参考文献，先框核心论据，再框补充资料
-  scenes.push(recScene(T(85.75), DUR, (t, E) => ({
+  scenes.push(recScene(T(85.75), SEG4, (t, E) => ({
     el: E.image('rp_refs'), iw: 2560, ih: 1440,
     focus: [{ at: T(85.75) + .3, r: [520, 160, 2460, 1060], marks: [
       { r: [540, 175, 700, 225], at: T(86.70) }, { r: [545, 250, 2450, 825], at: T(86.95), kind: 'box' },
       { r: [540, 875, 700, 935], at: T(88.60) }, { r: [545, 950, 2450, 1060], at: T(88.85), kind: 'box' },
     ] }],
   }), { bg: { c1: 'rgba(245,223,39,.16)' } }));
+
+  /* ================= 第 4 段：③ 做课件 + 沉淀 Skill + 手机远程 ================= */
+
+  // C 92.0–93.2 停顿：章节卡「③ 做课件」亮起（①② 已讲），重击同帧
+  const CH3_HIT = 92.2;
+  scenes.push({ t0: SEG4, t1: 93.20, draw(ctx, t) { D.bg(ctx, t, { c2: 'rgba(57,200,114,.35)' }); navDraw(ctx, t, SEG4 - .4, [-1, -1, -1], 2, { hit: CH3_HIT }); } });
+
+  // 28  93.20–96.62 「最后我们就能做出开头那个能拖能转的3D课件」课件整屏（滑块转动切平面）→ 放大三个模块
+  scenes.push(recScene(93.20, T(94.60), (t, E) => ({
+    el: E.video('c08', 6.0 + (t - 93.20)), iw: 1992, ih: 1440,
+    focus: [{ at: 93.80, r: [120, 600, 1880, 1360] }],
+  })));
+
+  // 29  96.62–100.47 「直接调用「离线互动科学仿真HTML生成」这个技能」放大技能菜单，框出这一项
+  scenes.push(recScene(T(94.60), T(98.45), (t, E) => ({
+    el: E.video('c04a', t - T(94.60)), iw: 2560, ih: 1440,
+    focus: [{ at: T(94.60) + .5, r: [560, 550, 1500, 1300], maxH: 760, marks: [{ r: [1105, 700, 1445, 752], at: T(95.47), kind: 'box' }] }],
+  })));
+
+  // 30  100.47–102.87 「让它生成配套的3D交互课件」放大生成好的 .html 课件文件
+  scenes.push(recScene(T(98.45), T(100.85), (t, E) => ({
+    el: E.image('k_file'), iw: 2560, ih: 1440,
+    focus: [{ at: T(98.45) + .3, r: [540, 480, 2520, 820], marks: [{ r: [760, 522, 1612, 568], at: T(99.17), dur: .5 }] }],
+  })));
+
+  // 31  102.87–106.22 「它把三个知识点整合在了同一个三维曲面里」三个模块标题逐个框出
+  scenes.push(recScene(T(100.85), T(104.20), (t, E) => ({
+    el: E.image('c08still'), iw: 1992, ih: 1440,
+    focus: [{ at: T(100.85) + .3, r: [120, 600, 1880, 1360], marks: [
+      { r: [180, 630, 420, 685], at: T(101.29), kind: 'box' }, { r: [740, 630, 1040, 685], at: T(101.45), kind: 'box' }, { r: [1295, 630, 1595, 685], at: T(101.61), kind: 'box' },
+    ] }],
+  })));
+
+  // 32  106.22–109.42 「拖动锚点或滑块，抽象概念的几何本质」放大拖动锚点 → 移到滑块（1.43 倍速）
+  {
+    const t0 = T(104.20), R1 = [150, 700, 720, 1160], R2 = [700, 1080, 1340, 1320], tS = T(104.92);
+    scenes.push(recScene(t0, T(107.40), (t, E) => ({
+      el: E.video('c08b', t - t0), iw: 1992, ih: 1440,
+      focus: [{ at: t0 + .25, r: tt => lerpR(R1, R2, ease.inOut(prog(tt, tS, tS + .45))), maxH: 720 }],
+    })));
+  }
+
+  // 33  109.42–111.33 「一眼就能看明白。整个流程走下来」真人近景
+  scenes.push(anchorFull(T(107.40), T(109.80), { close: true }));
+
+  // 34  111.33–113.73 「还能沉淀成个人专属Skill」放大：指令「沉淀成我的个人专属 Skill」→「个人技能已成功创建并注册」
+  scenes.push(recScene(T(109.80), T(112.16), (t, E) => ({
+    el: E.image('k_skill'), iw: 2560, ih: 1440,
+    focus: [{ at: T(109.80) + .3, r: [540, 180, 2520, 1000], marks: [
+      { r: [1688, 225, 2098, 272], at: T(110.12), dur: .5 }, { r: [552, 630, 1430, 680], at: T(110.90), dur: .5 },
+    ] }],
+  })));
+
+  // 35  113.73–115.47 「后续可以一键复用」放大输入框里的「/可视化教研模板」
+  scenes.push(recScene(T(112.16), T(114.22), (t, E) => ({
+    el: E.image('k_use'), iw: 2560, ih: 1440,
+    focus: [{ at: T(112.16) + .25, r: [560, 580, 2480, 1000], marks: [{ r: [600, 700, 870, 750], at: T(113.00), kind: 'box' }] }],
+  })));
+
+  // 36  115.47–116.52 「就算出门在外」电脑端打开「让手机也能控制电脑」权限
+  scenes.push(recScene(T(114.22), T(115.27), (t, E) => ({
+    el: E.video('c06', t - T(114.22)), iw: 2560, ih: 1440,
+    focus: [{ at: T(114.22) + .2, r: [270, 720, 1880, 980], marks: [{ r: [1560, 780, 1830, 970], at: T(114.55), kind: 'box' }] }],
+  })));
+
+  // 37  116.52–118.98 「手机也可以直接远程操作电脑干活」手机录屏（竖屏）→ 放大输入的指令
+  scenes.push(recScene(T(115.27), T(117.73), (t, E) => ({
+    el: E.image('ph_cmd'), iw: 1440, ih: 3120,
+    focus: [{ at: T(115.27) + .45, r: [40, 2290, 1400, 2790], marks: [{ r: [110, 2495, 1090, 2555], at: T(115.90), dur: .6 }] }],
+  })));
+
+  // 38  118.98–120.41 「工作照样继续跑」手机上看到「PPT 已生成并发布完成，共 28 页」
+  scenes.push(recScene(T(117.73), T(119.16), (t, E) => ({
+    el: E.image('ph_done'), iw: 1440, ih: 3120,
+    focus: [{ at: T(117.73) + .25, r: [30, 820, 1420, 1240], marks: [{ r: [60, 905, 990, 960], at: T(118.10), dur: .4 }] }],
+  }), { noIn: true }));
+
+  // 39  120.41–122.35 「不用守在电脑旁边」手机里直接预览生成的 PPT
+  scenes.push(recScene(T(119.16), DUR, (t, E) => ({ el: E.image('ph_ppt'), iw: 1440, ih: 3120, focus: [{ at: T(119.16) + .25, r: [0, 280, 1440, 1500] }] }), { noIn: true }));
 
   /* ---------- 音频 ---------- */
   const audio = [];
@@ -529,8 +621,10 @@
   // 第 2 段换曲：章节卡重击时进，说话压低，段尾淡出
   const env2 = [[CH1_HIT, .7], [31.0, .7], [31.15, LOW], [66.2, LOW], [66.45, .5], [66.95, 0]];
   audio.push({ asset: 'music2', at: CH1_HIT - .05, from: 0, dur: 66.95 - CH1_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env2 });
-  const env3 = [[CH2_HIT, .7], [67.6, .7], [67.75, LOW], [DUR - .6, LOW], [DUR, 0]];
-  audio.push({ asset: 'music3', at: CH2_HIT - .05, from: 0, dur: DUR - CH2_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .5, env: env3 });
+  const env3 = [[CH2_HIT, .7], [67.6, .7], [67.75, LOW], [SEG4 - .1, LOW], [SEG4 + .3, 0]];
+  audio.push({ asset: 'music3', at: CH2_HIT - .05, from: 0, dur: SEG4 + .3 - CH2_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env3 });
+  const env4 = [[CH3_HIT, .7], [93.15, .7], [93.3, LOW], [DUR - .6, LOW], [DUR, 0]];
+  audio.push({ asset: 'music4', at: CH3_HIT - .05, from: 0, dur: DUR - CH3_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .5, env: env4 });
   const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
   // 转场音：峰值对齐切点（whoosh 峰在 0.71 秒）
   sfx('whoosh', 1.95 - .62, .5); sfx('whoosh', 4.93 - .62, .45); sfx('swish', 11.99 - .7, .45);
@@ -562,6 +656,18 @@
   sfx('whoosh', T(79.62) - .62, .45);
   sfx('swish', T(83.25) - .7, .4); [0, 1, 2, 3].forEach(i => sfx('pop', T(83.60) + i * .32 + .15, .45));
   sfx('whoosh', T(85.75) - .62, .45); sfx('pop', T(86.95), .45); sfx('pop', T(88.85), .45); sfx('shine', T(90.0), .3);
+  // 第 4 段
+  sfx('rise', CH3_HIT - 1.43, .6); sfx('thud', CH3_HIT - .17, .85); sfx('dong', CH3_HIT - .21, .45);
+  sfx('whoosh', 93.20 - .62, .45);
+  sfx('whoosh', T(94.60) - .62, .4); sfx('pop', T(95.47), .45);
+  sfx('whoosh', T(98.45) - .62, .4); sfx('shine', T(99.17), .25);
+  sfx('swish', T(100.85) - .7, .35); [101.29, 101.45, 101.61].forEach(v => sfx('pop', T(v), .4));
+  sfx('whoosh', T(104.20) - .62, .4);
+  sfx('whoosh', T(109.80) - .62, .4); sfx('shine', T(110.12), .2); sfx('shine', T(110.90), .25);
+  sfx('swish', T(112.16) - .7, .35); sfx('pop', T(113.00), .5);
+  sfx('whoosh', T(114.22) - .62, .4); sfx('pop', T(114.55), .4);
+  sfx('whoosh', T(115.27) - .62, .45); sfx('shine', T(115.90), .25);
+  sfx('swish', T(117.73) - .7, .35); sfx('shine', T(118.10), .3); sfx('swish', T(119.16) - .7, .3);
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -582,18 +688,23 @@
     rp_prompt: { type: 'image', src: A + 'rp_prompt.jpg' }, rp_refs: { type: 'image', src: A + 'rp_refs.jpg' },
     rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, rp_h2: { type: 'image', src: A + 'rp_h2.jpg' },
     rp_h3: { type: 'image', src: A + 'rp_h3.jpg' }, rp_h4: { type: 'image', src: A + 'rp_h4.jpg' },
+    c04a: { type: 'video', src: { mp4: A + 'c04a.mp4', webm: A + 'c04a.webm' } },
+    c08b: { type: 'video', src: { mp4: A + 'c08b.mp4', webm: A + 'c08b.webm' } },
+    c06: { type: 'video', src: { mp4: A + 'c06.mp4', webm: A + 'c06.webm' } },
+    k_file: { type: 'image', src: A + 'k_file.jpg' }, k_skill: { type: 'image', src: A + 'k_skill.jpg' }, k_use: { type: 'image', src: A + 'k_use.jpg' },
+    ph_cmd: { type: 'image', src: A + 'ph_cmd.jpg' }, ph_done: { type: 'image', src: A + 'ph_done.jpg' }, ph_ppt: { type: 'image', src: A + 'ph_ppt.jpg' },
     logo: { type: 'image', src: A + 'logo.png' },
-    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' },
+    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' },
   };
   for (const n of ['whoosh', 'swish', 'rise', 'thud', 'dong', 'pop', 'shine', 'scribble']) assets[n] = { type: 'audio', src: A + `sfx_${n}.mp3` };
 
   window.PROJECT = {
-    title: '库库AI_第1-3段_试剪', width: 1920, height: 1080, duration: DUR,
+    title: '库库AI_第1-4段_试剪', width: 1920, height: 1080, duration: DUR,
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
     assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
-    checks: [66.9, 68.5, 71.0, 71.9, 73.5, 74.6, 77.0, 79.0, 82.0, 84.0, 85.6, 86.6, 88.5, 90.3, 91.9],
-    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告']],
+    checks: [92.4, 94.5, 96.2, 97.8, 99.8, 101.8, 104.0, 105.5, 107.0, 108.9, 110.0, 112.8, 114.8, 116.2, 117.8, 119.6, 121.5],
+    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件']],
     SUBS, T, V,
   };
 })();

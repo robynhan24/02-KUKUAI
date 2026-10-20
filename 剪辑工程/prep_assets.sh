@@ -5,14 +5,14 @@ set -e
 cd "$(dirname "$0")/.."
 S="库库AI-空镜素材"; O="剪辑工程/assets"; WB="${WB:-/home/claude/robynhan24/video-workbench--}"
 mkdir -p "$O"
-# 本期已做到口播 0–92 秒（第 1–3 段）。往后加段时把这里的 92 改大。
+# 本期已做到口播 0–121 秒（第 1–4 段）。往后加段时把这里的 121 改大。
 # 视频：每段两份。mp4(H.264) 给 Safari/手机，webm(VP9) 给 Chromium。关键帧 0.5 秒一个，方便跳转。
 enc(){ # 输入 起 止 滤镜 输出名
   ffmpeg -v error -y -ss "$2" -to "$3" -i "$1" -an -vf "$4" -r 30 -g 15 -c:v libx264 -preset slow -crf "${CRF:-23}" -pix_fmt yuv420p -movflags +faststart "$O/$5.mp4"
   ffmpeg -v error -y -ss "$2" -to "$3" -i "$1" -an -vf "$4" -r 30 -g 15 -c:v libvpx-vp9 -b:v 0 -crf "${WCRF:-36}" -row-mt 1 -deadline good -cpu-used 4 "$O/$5.webm"
 }
 # 主播（低清 854×480，换高清口播后改这里）
-CRF=20 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 92 "null" anchor
+CRF=20 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 121 "null" anchor
 # 录屏一律用整屏画面（阿亮 10-20 要求：录屏全显，重点局部放大、背景虚化压暗）。
 # 国内模型名、快捷键提示用白块盖掉（剪辑规矩第 10、12 条）。
 M_DS='drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill'          # 底部 DeepSeek-V4-Pro
@@ -42,12 +42,24 @@ still "03 生成教研报告.mp4" 10.5 "$M_DS2" rp_h2
 still "03 生成教研报告.mp4" 12.0 "$M_DS2" rp_h3
 still "03 生成教研报告.mp4" 14.5 "$M_DS2" rp_h4
 still "03 生成教研报告.mp4" 16.0 "$M_DS2" rp_refs
+# 第 4 段（③ 做课件 + 沉淀技能 + 远程）：选「离线互动科学仿真」技能（放慢 1.28 倍）、拖动锚点和滑块（1.43 倍速）、远程权限开关
+enc "$S/04 3D课件模型.mp4" 0.8 3.8 "$M_DS,setpts=PTS*1.283" c04a
+enc "$S/08 HTML 3D交互.mp4" 0 4.4 "setpts=PTS/1.43" c08b
+enc "$S/06 远程1.mp4" 6.0 7.2 "null" c06
+still "04 3D课件模型.mp4" 15.0 "$M_DS" k_file
+still "05 沉淀技能.mp4" 5.2 "$M_DS" k_skill
+still "05 沉淀技能.mp4" 14.3 "drawbox=x=1080:y=955:w=290:h=60:color=0xF5F5F5@1:t=fill" k_use
+# 手机录屏（竖屏 1440×3120）：输入指令、生成完成、PPT 预览；底部模型名盖掉（不用 5–7 秒的模型菜单）
+still "07 远程-手机.mp4" 10.0 "drawbox=x=420:y=2800:w=580:h=85:color=0xEDEDED@1:t=fill" ph_cmd
+still "07 远程-手机.mp4" 15.0 "drawbox=x=230:y=2800:w=500:h=85:color=white@1:t=fill" ph_done
+still "07 远程-手机.mp4" 19.0 "null" ph_ppt
 cp "库库AI-logo.png" "$O/logo.png"
 # 口播：前 31 秒，统一响度 -16 LUFS（混上音乐后整体约 -14）
-ffmpeg -v error -y -i "$S/00 阿亮口播 低清.mp4" -t 92 -vn -af "highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 1 -c:a libmp3lame -b:a 128k "$O/voice.mp3"
+ffmpeg -v error -y -i "$S/00 阿亮口播 低清.mp4" -t 121 -vn -af "highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 1 -c:a libmp3lame -b:a 128k "$O/voice.mp3"
 # 配乐：Smart Sparks 从 8 秒起（前面是安静前奏）
 ffmpeg -v error -y -ss 8 -t 34 -i "$WB/音乐库/配乐_科技解说/kissan4-smart-sparks-436614.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music.mp3"
 # 第 2 段配乐：Tech Explainer 从 26 秒起
+ffmpeg -v error -y -ss 0 -t 32 -i "$WB/音乐库/配乐_科技解说/sonican-curious-circuits-playful-electronic-music-411246.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music4.mp3"   # 第 4 段配乐：Curious Circuits
 ffmpeg -v error -y -ss 14 -t 30 -i "$WB/音乐库/配乐_科技解说/alex-morgan-corporate-marimba-explainer-video-563574.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music3.mp3"   # 第 3 段配乐：Corporate Marimba 从 14 秒起
 ffmpeg -v error -y -ss 26 -t 40 -i "$WB/音乐库/配乐_科技解说/53976329-tech-explainer-background-modern-digital-459114.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music2.mp3"
 # 音效（文件名改成英文，网页地址里好用）
