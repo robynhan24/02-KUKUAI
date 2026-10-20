@@ -97,7 +97,7 @@
         if (this.t >= this.P.duration) { this.pause(); this.t = this.P.duration; if (this._onEnd) this._onEnd(); }
         this.dirty = true;
       }
-      if (this.dirty) { this.dirty = false; this.render(this.t); this._syncVideos(); this._uiTime(); }
+      if (this.dirty && !this._exact) { this.dirty = false; this.render(this.t); this._syncVideos(); this._uiTime(); }
       requestAnimationFrame(() => this._loop());
     }
     render(t) {
@@ -108,7 +108,7 @@
       for (const s of P.scenes) {
         if (t >= s.t0 && t < s.t1) { ctx.save(); try { s.draw(ctx, t, this, s); } catch (e) { console.error(e); } ctx.restore(); }
       }
-      if (P.overlay) { ctx.save(); P.overlay(ctx, t, this); ctx.restore(); }
+      if (P.overlay && !this.noOverlay) { ctx.save(); P.overlay(ctx, t, this); ctx.restore(); }   // noOverlay：导出剪映用的画面不带字幕
     }
     _syncVideos() {
       for (const [k, v] of Object.entries(this.vid)) {
@@ -157,15 +157,14 @@
     /** 等所有需要的视频跳到位再画一次（截图自查用） */
     async _settle() {
       this._exact = true;
-      for (let i = 0; i < 40; i++) {
-        this.render(this.t); this._syncVideos();
+      this.render(this.t); this._syncVideos();          // 先画一次，得到这一帧要用的视频和时间
+      for (let i = 0; i < 160; i++) {                   // 等视频跳到位（不重画，只检查）
         let ok = true;
-        for (const [k, want] of this.want) { const v = this.vid[k]; if (v.seeking || v.readyState < 2 || Math.abs(v.currentTime - want) > 0.02) ok = false; }
+        for (const [k, want] of this.want) { const v = this.vid[k]; if (v.seeking || v.readyState < 2 || Math.abs(v.currentTime - want) > 0.02) { ok = false; if (!v.seeking && Math.abs(v.currentTime - want) > 0.02) v.currentTime = want; } }
         if (ok) break;
-        await new Promise(r => setTimeout(r, 60));
+        await new Promise(r => setTimeout(r, 15));
       }
-      this.render(this.t); this._exact = false; this._uiTime();
-      await new Promise(r => requestAnimationFrame(r));
+      this.render(this.t); this._exact = false; this.dirty = false; this._uiTime();
     }
 
     /* ---------- 声音 ---------- */

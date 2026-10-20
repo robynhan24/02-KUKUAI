@@ -60,18 +60,30 @@
 
   /* ---------- 主播 ---------- */
   const ANCHOR_W = 854, ANCHOR_H = 480;
-  const PIP_SRC = [290, 22, 300, 300];          // 小圆窗取的区域（脸 + 肩）
   const PIP = { x: 160, y: 920, d: 230 };       // 左下角，避开内容和字幕
-  function anchorEl(E, t) {
+  /** 成片时间 → 主播视频时间（停顿里继续往下走） */
+  function anchorV(t) {
     let v = V(t);
-    if (v == null) { let best = null; for (const [a, b, t0] of VOICE) if (t >= t0) best = a + (t - t0); v = best; }
-    return v == null ? null : E.video('anchor', v);
+    if (v == null) { for (const [a, , t0] of VOICE) if (t >= t0) v = a + (t - t0); }
+    return v;
+  }
+  function anchorEl(E, t) { const v = anchorV(t); return v == null ? null : E.video('anchor', v); }
+  /** 主播头部位置 [中心 x, 头顶 y]（anchor_track.js，每秒一个点，中间插值） */
+  function head(v) {
+    const H = window.ANCHOR_TRACK; if (!H || v == null) return [400, 55];
+    const i = clamp(Math.floor(v), 0, H.length - 1), j = Math.min(H.length - 1, i + 1), f = clamp(v - i);
+    return [lerp(H[i][0], H[j][0], f), lerp(H[i][1], H[j][1], f)];
+  }
+  /** 小圆窗取的区域：脸在圆里水平居中、略高于中心（脸 + 肩） */
+  function pipSrc(v) {
+    const S = 270, [cx, top] = head(v);
+    return [clamp(cx - S / 2, 0, ANCHOR_W - S), clamp(top + 62 - .44 * S, 0, ANCHOR_H - S), S, S];
   }
   function pip(ctx, t, E, t0, t1) {
     const k = ease.back(prog(t, t0, t0 + .35)) * (1 - ease.out(prog(t, t1 - .2, t1)));
     if (k <= 0) return;
     ctx.save(); ctx.translate(PIP.x, PIP.y); ctx.scale(k, k);
-    D.pip(ctx, anchorEl(E, t), PIP_SRC, 0, 0, PIP.d);
+    D.pip(ctx, anchorEl(E, t), pipSrc(anchorV(t)), 0, 0, PIP.d);
     ctx.restore();
   }
   /** 真人大画面：慢慢推近；close=true 用近景 */
@@ -79,8 +91,11 @@
     return {
       t0, t1, draw(ctx, t, E) {
         const el = anchorEl(E, t); if (!el) return;
-        const k = prog(t, t0, t1), z0 = o.close ? 1.22 : 1.0, z1 = z0 + .06;
-        D.cover(ctx, el, ANCHOR_W, ANCHOR_H, { zoom: lerp(z0, z1, k), cx: .52, cy: o.close ? .3 : .4 });
+        // 人物水平居中；头顶留白：全景约 12%，近景约 8%；慢慢推近
+        const p = prog(t, t0, t1), z = o.close ? lerp(1.16, 1.21, p) : lerp(1.06, 1.11, p);
+        const k = 1920 / ANCHOR_W * z, dw = ANCHOR_W * k, dh = ANCHOR_H * k, [hx, ht] = head(anchorV(t));
+        const dx = clamp(960 - hx * k, 1920 - dw, 0), dy = clamp((o.close ? 86 : 130) - ht * k, 1080 - dh, 0);
+        ctx.drawImage(el, dx, dy, dw, dh);
         // 进场：0.18 秒白闪 / 推近，避免硬切
         const f = 1 - prog(t, t0, t0 + .18); if (f > 0 && o.flash !== false) { ctx.fillStyle = `rgba(255,255,255,${.35 * f})`; ctx.fillRect(0, 0, 1920, 1080); }
       },
