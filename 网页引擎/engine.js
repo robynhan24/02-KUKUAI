@@ -32,7 +32,10 @@
       this.util = { clamp, lerp, prog, ease };
       this._ui(root);
       try { this.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ac = null; }
-      if (this.ac) { this.master = this.ac.createGain(); this.master.connect(this.ac.destination); }
+      if (this.ac) {
+        this.master = this.ac.createGain(); this.master.connect(this.ac.destination);
+        this.ac.onstatechange = () => { if (this.playing && this.ac.state === 'running') { this.t0 = this._clock() - this.t; this._schedule(this.t); } this._uiSound(); };
+      }
       this.ready = this._load();
       requestAnimationFrame(() => this._loop());
     }
@@ -65,7 +68,7 @@
       let n = 0; const tot = jobs.length;
       jobs.forEach(j => j.then(() => { n++; this.ui.load.textContent = `加载素材 ${n}/${tot}`; }));
       await Promise.all(jobs);
-      this.ui.load.style.display = 'none'; this.ui.big.style.display = 'flex';
+      this.ui.load.style.display = 'none'; this.ui.big.style.display = 'flex'; this._uiSound();
       this.dirty = true;
     }
 
@@ -122,10 +125,22 @@
     }
 
     /* ---------- 播放控制 ---------- */
+    /** 在用户点击的同一瞬间解锁声音（Safari/iPhone 要求不能放在 Promise 回调里）。
+     *  另外播一个静音的 <audio>，让 iPhone 把声音当「媒体播放」，静音键打开时也有声。 */
+    _unlock() {
+      if (!this.ac) return;
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+      if (this.ac.state !== 'running') this.ac.resume().catch(() => {});
+      try { const b = this.ac.createBuffer(1, 1, 22050), s = this.ac.createBufferSource(); s.buffer = b; s.connect(this.ac.destination); s.start(0); } catch (e) {}
+      if (!this._keep && this.P.silence) {
+        const a = new Audio(this.P.silence); a.loop = true; a.setAttribute('playsinline', ''); a.volume = 0.01;
+        a.play().then(() => { this._keep = a; }).catch(() => {});
+      }
+    }
     play() {
       if (this.playing) return;
       if (this.t >= this.P.duration - 0.05) this.t = 0;
-      const go = () => { this.t0 = this._clock() - this.t; this.playing = true; this._schedule(this.t); this.ui.play.textContent = '❚❚'; this.ui.big.style.display = 'none'; };
+      const go = () => { this.t0 = this._clock() - this.t; this.playing = true; this._schedule(this.t); this.ui.play.textContent = '❚❚'; this.ui.big.style.display = 'none'; this._uiSound(); };
       if (this.ac && this.ac.state !== 'running') this.ac.resume().then(go, go); else go();
     }
     pause() {
@@ -216,6 +231,7 @@
         .ke .tm{font-variant-numeric:tabular-nums;font-size:14px;min-width:96px;text-align:right}
         .ke .big{position:absolute;inset:0;bottom:44px;display:none;align-items:center;justify-content:center;cursor:pointer}
         .ke .big span{width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-size:40px;padding-left:8px;border:2px solid rgba(255,255,255,.7)}
+        .ke .snd{font-size:13px;color:#f5a524;white-space:nowrap}
         .ke .load{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:18px}`;
       document.head.appendChild(css);
       const box = document.createElement('div'); box.className = 'ke';
@@ -225,22 +241,31 @@
       const rng = document.createElement('input'); rng.type = 'range'; rng.min = 0; rng.max = this.P.duration; rng.step = 0.01; rng.value = 0;
       const tm = document.createElement('span'); tm.className = 'tm';
       const exp = document.createElement('button'); exp.textContent = '导出';
+      const snd = document.createElement('span'); snd.className = 'snd';
       const big = document.createElement('div'); big.className = 'big'; big.innerHTML = '<span>▶</span>';
       const load = document.createElement('div'); load.className = 'load'; load.textContent = '加载素材…';
-      bar.append(play, rng, tm, exp); box.append(cv, bar, big, load); root.appendChild(box);
+      bar.append(play, rng, tm, snd, exp); box.append(cv, bar, big, load); root.appendChild(box);
       this.canvas = cv; this.ctx = cv.getContext('2d');
-      this.ui = { play, rng, tm, exp, big, load };
-      play.onclick = () => this.ready.then(() => this.toggle());
-      big.onclick = () => this.ready.then(() => this.play());
-      cv.onclick = () => this.ready.then(() => this.toggle());
+      this.ui = { play, rng, tm, exp, big, load, snd };
+      play.onclick = () => { this._unlock(); this.ready.then(() => this.toggle()); };
+      big.onclick = () => { this._unlock(); this.ready.then(() => this.play()); };
+      cv.onclick = () => { this._unlock(); this.ready.then(() => this.toggle()); };
       rng.oninput = () => { this._scrub = true; this.seek(+rng.value); };
       rng.onchange = () => { this._scrub = false; };
-      exp.onclick = () => this.export();
+      exp.onclick = () => { this._unlock(); this.export(); };
       window.addEventListener('keydown', e => {
-        if (e.code === 'Space') { e.preventDefault(); this.toggle(); }
+        if (e.code === 'Space') { e.preventDefault(); this._unlock(); this.toggle(); }
         if (e.code === 'ArrowLeft') this.seek(this.t - (e.shiftKey ? 1 : 1 / 30));
         if (e.code === 'ArrowRight') this.seek(this.t + (e.shiftKey ? 1 : 1 / 30));
       });
+    }
+    _uiSound() {
+      const want = Object.values(this.P.assets).filter(a => a.type === 'audio').length, got = Object.keys(this.buf).length;
+      let msg = '';
+      if (!this.ac) msg = '浏览器不支持声音';
+      else if (got < want) msg = `声音加载失败 ${got}/${want}`;
+      else if (this.playing && this.ac.state !== 'running') msg = '声音未开启，点一下画面';
+      this.ui.snd.textContent = msg;
     }
     _uiTime() {
       const f = x => `${Math.floor(x / 60)}:${(x % 60).toFixed(2).padStart(5, '0')}`;

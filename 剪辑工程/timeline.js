@@ -308,7 +308,7 @@
   window.PROJECT = {
     title: '库库AI_第1段_试剪', width: 1920, height: 1080, duration: DUR,
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
-    assets, scenes, overlay, audio,
+    assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
     checks: [0.9, 2.6, 4.4, 7.7, 10, 13.2, 14.4, 15.6, 17.5, 19.3, 20.4, 21.6, 24, 26.0, 27.5, 29],
     SUBS, T, V,

@@ -41,4 +41,5 @@ for k in ['pop','shine','scribble']:
     subprocess.run(['ffmpeg','-v','error','-y','-f','s16le','-ar','48000','-ac','2','-i','-','-ar','44100','-c:a','libmp3lame','-b:a','128k',f'{out}/sfx_{k}.mp3'],input=raw,check=True)
 PY
 )
+ffmpeg -v error -y -f lavfi -i anullsrc=r=22050:cl=mono -t 1 -c:a libmp3lame -b:a 32k "$O/silence.mp3"   # iPhone 静音键开着也能出声用
 echo done
