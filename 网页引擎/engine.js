@@ -348,6 +348,68 @@
       ctx.fillStyle = o.color || '#fff'; ctx.fillText(s, x, y);
       ctx.restore();
     },
+    /** 强调标记。list 项：{r:[x0,y0,x1,y1](素材坐标), at, dur, kind:'hl'黄色涂亮|'box'橙色虚线框}
+     *  x,y = 素材区域 src 左上角画到画面上的位置，k = 缩放 */
+    marks(c, t, x, y, k, src, list) {
+      for (const it of list || []) {
+        const p = ease.out(prog(t, it.at, it.at + (it.dur || .3))); if (p <= 0) continue;
+        const rx = x + (it.r[0] - src[0]) * k, ry = y + (it.r[1] - src[1]) * k, rw = (it.r[2] - it.r[0]) * k, rh = (it.r[3] - it.r[1]) * k;
+        if (it.kind === 'box') {
+          c.save(); c.setLineDash([18, 12]); c.lineDashOffset = -t * 40; c.lineWidth = 6; c.strokeStyle = `rgba(255,170,66,${p})`;
+          const g = 1 + (1 - p) * .15; D.rr(c, rx + rw / 2 - (rw / 2 + 12) * g, ry + rh / 2 - (rh / 2 + 10) * g, (rw + 24) * g, (rh + 20) * g, 14); c.stroke(); c.restore();
+        } else {
+          c.save(); c.fillStyle = 'rgba(245,223,39,.45)'; D.rr(c, rx - 4, ry, (rw + 8) * p, rh, 6); c.fill(); c.restore();
+        }
+      }
+    },
+    /** 软模糊（缩小再放大，所有浏览器都能用） */
+    _blurred(el, iw, ih) {
+      const bw = Math.max(16, Math.round(iw / 14)), bh = Math.max(9, Math.round(ih / 14));
+      if (!D._bc) { D._bc = document.createElement('canvas'); D._bg = D._bc.getContext('2d'); }
+      if (D._bc.width !== bw || D._bc.height !== bh) { D._bc.width = bw; D._bc.height = bh; }
+      D._bg.imageSmoothingQuality = 'high'; D._bg.drawImage(el, 0, 0, iw, ih, 0, 0, bw, bh);
+      return D._bc;
+    },
+    /** 整屏录屏窗口 + 局部放大。
+     *  el/iw/ih：录屏（视频或图片）和它的原始尺寸；o.box：窗口最大范围 [x,y,w,h]（默认约 1680×945）
+     *  o.focus：[{at, end, r:[x0,y0,x1,y1] 或 t=>[...], marks:[...], cx, cy, maxW, maxH}]
+     *  框选开始后：背景录屏虚化 + 压暗，选中的那块从原位置放大到画面中间。 */
+    rec(ctx, t, el, iw, ih, o = {}) {
+      const B = o.box || [120, 36, 1680, 945];
+      const k = Math.min(B[2] / iw, B[3] / ih), w = iw * k, h = ih * k, x = B[0] + (B[2] - w) / 2, y = B[1] + (B[3] - h) / 2;
+      const env = it => ease.inOut(prog(t, it.at, it.at + .4)) * (it.end != null ? 1 - ease.inOut(prog(t, it.end - .3, it.end)) : 1);
+      const items = (o.focus || []).map(it => [it, env(it)]).filter(([, e]) => e > 0);
+      const blur = items.reduce((m, [, e]) => Math.max(m, e), 0);
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+      D.rr(ctx, x, y, w, h, 18); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore(); ctx.save(); D.rr(ctx, x, y, w, h, 18); ctx.clip();
+      if (el) {
+        ctx.drawImage(el, 0, 0, iw, ih, x, y, w, h);
+        if (blur > 0) { ctx.globalAlpha = blur; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(D._blurred(el, iw, ih), x, y, w, h); ctx.globalAlpha = 1; }
+        if (o.marks) D.marks(ctx, t, x, y, k, [0, 0, iw, ih], o.marks);
+      }
+      if (blur > 0) { ctx.fillStyle = `rgba(8,8,14,${.55 * blur})`; ctx.fillRect(x, y, w, h); }
+      ctx.restore();
+      ctx.save(); D.rr(ctx, x + .5, y + .5, w - 1, h - 1, 18); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      // 放大的局部
+      for (const [it, e] of items) {
+        const r = typeof it.r === 'function' ? it.r(t) : it.r, rw = r[2] - r[0], rh = r[3] - r[1];
+        const s = Math.min((it.maxW || 1640) / rw, (it.maxH || 720) / rh), tw = rw * s, th = rh * s;
+        const tx = (it.cx || 980) - tw / 2, ty = (it.cy || 450) - th / 2;
+        const ox = x + r[0] * k, oy = y + r[1] * k, ow = rw * k, oh = rh * k;
+        const px = lerp(ox, tx, e), py = lerp(oy, ty, e), pw = lerp(ow, tw, e), ph = lerp(oh, th, e);
+        ctx.save(); ctx.globalAlpha = clamp(e * 1.6);
+        ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 60 * e; ctx.shadowOffsetY = 20 * e;
+        D.rr(ctx, px, py, pw, ph, 16); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.restore(); ctx.save(); ctx.globalAlpha = clamp(e * 1.6);
+        D.rr(ctx, px, py, pw, ph, 16); ctx.clip();
+        if (el) ctx.drawImage(el, r[0], r[1], rw, rh, px, py, pw, ph);
+        D.marks(ctx, t, px, py, pw / rw, [r[0], r[1]], it.marks);
+        ctx.restore();
+        ctx.save(); ctx.globalAlpha = clamp(e * 1.6); D.rr(ctx, px, py, pw, ph, 16); ctx.lineWidth = 5; ctx.strokeStyle = '#ffaa42'; ctx.shadowColor = 'rgba(255,170,66,.7)'; ctx.shadowBlur = 24; ctx.stroke(); ctx.restore();
+      }
+    },
     /** 底部字幕：白色粗黑体 + 深色半透明底 */
     subtitle(ctx, s, alpha = 1, o = {}) {
       if (!s) return;

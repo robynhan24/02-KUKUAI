@@ -11,7 +11,25 @@ times = [float(x) for x in sys.argv[2:]]
 os.makedirs(out, exist_ok=True)
 
 class Q(http.server.SimpleHTTPRequestHandler):
+    """支持 Range 请求（视频跳转需要；Python 自带的服务器不支持）"""
     def log_message(self, *a): pass
+    def send_head(self):
+        rng = self.headers.get('Range')
+        path = self.translate_path(self.path)
+        if not rng or not os.path.isfile(path): return super().send_head()
+        size = os.path.getsize(path); a, _, b = rng.replace('bytes=', '').partition('-')
+        a = int(a or 0); b = min(int(b) if b else size - 1, size - 1)
+        f = open(path, 'rb'); f.seek(a); self._left = b - a + 1
+        self.send_response(206); self.send_header('Content-Type', self.guess_type(path))
+        self.send_header('Content-Range', f'bytes {a}-{b}/{size}'); self.send_header('Content-Length', str(self._left))
+        self.send_header('Accept-Ranges', 'bytes'); self.end_headers(); return f
+    def copyfile(self, src, dst):
+        left = getattr(self, '_left', None)
+        if left is None: return super().copyfile(src, dst)
+        while left > 0:
+            buf = src.read(min(65536, left))
+            if not buf: break
+            dst.write(buf); left -= len(buf)
 H = functools.partial(Q, directory=root)
 srv = socketserver.ThreadingTCPServer(('127.0.0.1', 0), H); port = srv.server_address[1]
 threading.Thread(target=srv.serve_forever, daemon=True).start()
