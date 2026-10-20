@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>库库AI 试剪</title>
+<style>
+  :root { --bg: #0d0d12; --fg: #e8e8ee; --muted: #9a9aa8; }
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0d0d12; --fg: #e8e8ee; } }
+  :root[data-theme="dark"] { --bg: #0d0d12; --fg: #e8e8ee; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { padding: 16px; box-sizing: border-box; min-height: 100vh; }
+  h1 { font: 600 16px/1.4 system-ui, sans-serif; margin: 0 auto 10px; max-width: calc((100vh - 64px) * 16 / 9); color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>库库AI · 第 1 段（前 30 秒）· 秋芝-豆包风格 · 点画面或空格播放，← → 逐帧</h1>
+<div id="app"></div>
+<script src="网页引擎/engine.js"></script>
+<script src="剪辑工程/timeline.js"></script>
+<script>window.KE = new KEngine(document.getElementById('app'), window.PROJECT);</script>
+</body>
+</html>
