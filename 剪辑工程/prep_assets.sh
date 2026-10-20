@@ -5,14 +5,14 @@ set -e
 cd "$(dirname "$0")/.."
 S="库库AI-空镜素材"; O="剪辑工程/assets"; WB="${WB:-/home/claude/robynhan24/video-workbench--}"
 mkdir -p "$O"
-# 本期已做到口播 0–121 秒（第 1–4 段）。往后加段时把这里的 121 改大。
+# 口播全长 146.2 秒（第 1–5 段全部用到）。
 # 视频：每段两份。mp4(H.264) 给 Safari/手机，webm(VP9) 给 Chromium。关键帧 0.5 秒一个，方便跳转。
 enc(){ # 输入 起 止 滤镜 输出名
   ffmpeg -v error -y -ss "$2" -to "$3" -i "$1" -an -vf "$4" -r 30 -g 15 -c:v libx264 -preset slow -crf "${CRF:-23}" -pix_fmt yuv420p -movflags +faststart "$O/$5.mp4"
   ffmpeg -v error -y -ss "$2" -to "$3" -i "$1" -an -vf "$4" -r 30 -g 15 -c:v libvpx-vp9 -b:v 0 -crf "${WCRF:-36}" -row-mt 1 -deadline good -cpu-used 4 "$O/$5.webm"
 }
 # 主播（低清 854×480，换高清口播后改这里）
-CRF=20 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 121 "null" anchor
+CRF=20 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 146.2 "null" anchor
 # 录屏一律用整屏画面（阿亮 10-20 要求：录屏全显，重点局部放大、背景虚化压暗）。
 # 国内模型名、快捷键提示用白块盖掉（剪辑规矩第 10、12 条）。
 M_DS='drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill'          # 底部 DeepSeek-V4-Pro
@@ -54,21 +54,28 @@ encx(){
 seg(){ echo "[s$1]trim=$2:$3,setpts=(PTS-STARTPTS)/$4[p$1]"; }   # 第几段 起 止 倍速
 # 08 拖锚点 → 拖滑块：1.0–8.6 秒，2.47 倍速
 encx "$S/08 HTML 3D交互.mp4" "[0:v]trim=1.0:8.6,setpts=(PTS-STARTPTS)/2.467[o]" c08c
-# 05 沉淀技能：0.3–5.6 发出指令→创建成功（2.69 倍）；5.6–14.6 我的技能→使用→输入框（4.15 倍）
-encx "$S/05 沉淀技能.mp4" "[0:v]drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill:enable='lt(t,7.8)',drawbox=x=1080:y=955:w=290:h=60:color=0xF5F5F5@1:t=fill:enable='gte(t,13.6)',scale=1920:1080,split=2[s1][s2];$(seg 1 0.3 5.6 2.69);$(seg 2 5.6 14.6 4.147);[p1][p2]concat=n=2:v=1[o]" c05
-# 06 电脑端打开远程权限：3.0–7.6，4.38 倍
-encx "$S/06 远程1.mp4" "[0:v]trim=3.0:7.6,setpts=(PTS-STARTPTS)/4.38,scale=1920:1080[o]" c06r
-# 07 手机：1.5–4.9 选位置/文件夹 + 7.4–11.6 输入并发送（跳过 5–7 秒的模型菜单），3.09 倍
+# 阿亮 10-20（第二次）：加速太快看不清 → 只挑重点步骤，1–1.3 倍速
+# 05 沉淀技能：发指令（1.2–2.3）+ 创建成功（5.2–6.5），原速
+encx "$S/05 沉淀技能.mp4" "[0:v]drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill,scale=1920:1080,split=2[s1][s2];$(seg 1 1.2 2.3 1);$(seg 2 5.2 6.5 1);[p1][p2]concat=n=2:v=1[o]" c05a
+# 05 一键复用：技能卡 → 使用 → 输入框出现「/可视化教研模板」（12.6–14.6，1.15 倍）
+encx "$S/05 沉淀技能.mp4" "[0:v]drawbox=x=1080:y=955:w=290:h=60:color=0xF5F5F5@1:t=fill:enable='gte(t,13.6)',scale=1920:1080,trim=12.6:14.6,setpts=(PTS-STARTPTS)/1.15[o]" c05b
+# 06 电脑端打开远程权限（6.0–7.1，原速）
+encx "$S/06 远程1.mp4" "[0:v]trim=6.0:7.1,setpts=PTS-STARTPTS,scale=1920:1080[o]" c06r
+# 07 手机（竖屏）：底部模型名盖掉；不用 5–7 秒的模型菜单
 M7='drawbox=x=420:y=1660:w=470:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,7.3\,9.8),drawbox=x=420:y=2800:w=580:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,9.3\,12.2),drawbox=x=230:y=2800:w=500:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,12.2\,17.6)'
-encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,split=2[s1][s2];$(seg 1 1.5 4.9 3.09);$(seg 2 7.4 11.6 3.09);[p1][p2]concat=n=2:v=1[o]" c07a
-# 07 手机：14.6–16.4 生成完成（1.5 倍）+ 18.0–29.0 预览 PPT（5.07 倍）
-encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,split=2[s1][s2];$(seg 1 14.6 16.4 1.5);$(seg 2 18.0 29.0 5.07);[p1][p2]concat=n=2:v=1[o]" c07b
+# 输入指令 → 发送（8.6–11.4，1.14 倍）
+encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,trim=8.6:11.4,setpts=(PTS-STARTPTS)/1.14[o]" c07a
+# 生成完成（14.6–16.0 原速）+ 翻看 PPT（18.0–20.5，1.27 倍）
+encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,split=2[s1][s2];$(seg 1 14.6 16.0 1);$(seg 2 18.0 20.5 1.27);[p1][p2]concat=n=2:v=1[o]" c07b
+# 第 5 段（结尾）：库库首页（网页端 / 桌面端展示用）
+still "01 查文献.mp4" 0.3 "null" k_home
 cp "库库AI-logo.png" "$O/logo.png"
 # 口播：前 31 秒，统一响度 -16 LUFS（混上音乐后整体约 -14）
-ffmpeg -v error -y -i "$S/00 阿亮口播 低清.mp4" -t 121 -vn -af "highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 1 -c:a libmp3lame -b:a 128k "$O/voice.mp3"
+ffmpeg -v error -y -i "$S/00 阿亮口播 低清.mp4" -t 146.2 -vn -af "highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 1 -c:a libmp3lame -b:a 128k "$O/voice.mp3"
 # 配乐：Smart Sparks 从 8 秒起（前面是安静前奏）
 ffmpeg -v error -y -ss 8 -t 34 -i "$WB/音乐库/配乐_科技解说/kissan4-smart-sparks-436614.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music.mp3"
 # 第 2 段配乐：Tech Explainer 从 26 秒起
+ffmpeg -v error -y -ss 4 -t 30 -i "$WB/音乐库/配乐_科技解说/the_mountain-inspiring-technology-179473.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music5.mp3"   # 第 5 段（结尾）配乐：Inspiring Technology
 ffmpeg -v error -y -ss 0 -t 32 -i "$WB/音乐库/配乐_科技解说/sonican-curious-circuits-playful-electronic-music-411246.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music4.mp3"   # 第 4 段配乐：Curious Circuits
 ffmpeg -v error -y -ss 14 -t 30 -i "$WB/音乐库/配乐_科技解说/alex-morgan-corporate-marimba-explainer-video-563574.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music3.mp3"   # 第 3 段配乐：Corporate Marimba 从 14 秒起
 ffmpeg -v error -y -ss 26 -t 40 -i "$WB/音乐库/配乐_科技解说/53976329-tech-explainer-background-modern-digital-459114.mp3" -af "loudnorm=I=-16:TP=-1.5" -ar 44100 -c:a libmp3lame -b:a 160k "$O/music2.mp3"

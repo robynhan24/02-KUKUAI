@@ -361,6 +361,11 @@
         }
       }
     },
+    /** 放大后的局部在画面上的位置 */
+    focusGeom(r, it) {
+      const rw = r[2] - r[0], rh = r[3] - r[1], s = Math.min((it.maxW || 1640) / rw, (it.maxH || 720) / rh), w = rw * s, h = rh * s;
+      return { x: (it.cx || 980) - w / 2, y: (it.cy || 450) - h / 2, w, h, s };
+    },
     /** 软模糊（缩小再放大，所有浏览器都能用） */
     _blurred(el, iw, ih) {
       const bw = Math.max(16, Math.round(iw / 14)), bh = Math.max(9, Math.round(ih / 14));
@@ -373,16 +378,58 @@
      *  el/iw/ih：录屏（视频或图片）和它的原始尺寸；o.box：窗口最大范围 [x,y,w,h]（默认约 1680×945）
      *  o.focus：[{at, end, r:[x0,y0,x1,y1] 或 t=>[...], marks:[...], cx, cy, maxW, maxH}]
      *  框选开始后：背景录屏虚化 + 压暗，选中的那块从原位置放大到画面中间。 */
+    /** 横屏录屏窗口的位置：box 内等比放下、居中 */
+    recGeom(iw, ih, box) {
+      const B = box || [120, 36, 1680, 945];
+      const k = Math.min(B[2] / iw, B[3] / ih), w = iw * k, h = ih * k;
+      return { x: B[0] + (B[2] - w) / 2, y: B[1] + (B[3] - h) / 2, w, h, k, r: 18 };
+    },
+    /** 竖屏手机录屏的位置（屏幕区域，不含外框）；外框厚度 bezel */
+    phoneGeom(iw, ih) {
+      const h = 856, k = h / ih, w = iw * k;
+      return { x: 960 - w / 2, y: 46, w, h, k, r: 46, bezel: 15 };
+    },
+    /** 手机外框：深色机身 + 金属边 + 侧键（屏幕区域 x,y,w,h 外面一圈） */
+    phoneFrame(ctx, g, alpha = 1) {
+      const b = g.bezel, X = g.x - b, Y = g.y - b, W = g.w + 2 * b, H = g.h + 2 * b, R = g.r + b;
+      ctx.save(); ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#2a2a33';               // 侧键
+      for (const [bx, by, bh] of [[X - 5, Y + 150, 70], [X - 5, Y + 240, 70], [X + W - 1, Y + 200, 110]]) { D.rr(ctx, bx, by, 6, bh, 3); ctx.fill(); }
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(X, Y, W, H, R) : ctx.rect(X, Y, W, H);
+      ctx.roundRect ? ctx.roundRect(g.x, g.y, g.w, g.h, g.r) : ctx.rect(g.x, g.y, g.w, g.h);
+      const gr = ctx.createLinearGradient(X, Y, X + W, Y + H); gr.addColorStop(0, '#2b2b34'); gr.addColorStop(.5, '#0d0d12'); gr.addColorStop(1, '#24242c');
+      ctx.fillStyle = gr; ctx.fill('evenodd');
+      D.rr(ctx, X + 1.5, Y + 1.5, W - 3, H - 3, R - 1); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(210,210,225,.55)'; ctx.stroke();
+      D.rr(ctx, g.x - 1, g.y - 1, g.w + 2, g.h + 2, g.r + 1); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,.9)'; ctx.stroke();
+      ctx.restore();
+    },
+    /** 整屏录屏窗口 + 局部放大。
+     *  el/iw/ih：录屏（视频或图片）和它的原始尺寸；o.box：窗口最大范围 [x,y,w,h]（默认约 1680×945）
+     *  竖屏（ih > iw）自动当成手机：虚化的同一画面铺满做底 + 手机外框（阿亮 10-20）
+     *  o.focus：[{at, end, r:[x0,y0,x1,y1] 或 t=>[...], marks:[...], cx, cy, maxW, maxH}]
+     *  框选开始后：背景录屏虚化 + 压暗，选中的那块从原位置放大到画面中间。 */
     rec(ctx, t, el, iw, ih, o = {}) {
-      const B = o.box || [120, 36, 1680, 945];
-      const k = Math.min(B[2] / iw, B[3] / ih), w = iw * k, h = ih * k, x = B[0] + (B[2] - w) / 2, y = B[1] + (B[3] - h) / 2;
+      if (D.skipRec) return;                    // 导出剪映背景用：只画背景
+      const phone = ih > iw;
+      const g = phone ? D.phoneGeom(iw, ih) : D.recGeom(iw, ih, o.box);
+      const { x, y, w, h, k } = g;
       const env = it => ease.inOut(prog(t, it.at, it.at + .4)) * (it.end != null ? 1 - ease.inOut(prog(t, it.end - .3, it.end)) : 1);
       const items = (o.focus || []).map(it => [it, env(it)]).filter(([, e]) => e > 0);
       const blur = Math.max(o.blur || 0, items.reduce((m, [, e]) => Math.max(m, e), 0));
+      if (phone && el) {
+        // 层次：同一画面放大虚化铺满做底，再压暗，中间一圈柔光
+        ctx.save(); ctx.imageSmoothingQuality = 'high';
+        const s = Math.max(1920 / iw, 1080 / ih) * 1.05; ctx.globalAlpha = .6;
+        ctx.drawImage(D._blurred(el, iw, ih), 960 - iw * s / 2, 540 - ih * s / 2, iw * s, ih * s);
+        ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(10,8,22,.72)'; ctx.fillRect(0, 0, 1920, 1080);
+        const gl = ctx.createRadialGradient(960, 470, 100, 960, 470, 620); gl.addColorStop(0, 'rgba(139,92,246,.35)'); gl.addColorStop(1, 'rgba(139,92,246,0)');
+        ctx.fillStyle = gl; ctx.fillRect(0, 0, 1920, 1080);
+        ctx.restore();
+      }
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
-      D.rr(ctx, x, y, w, h, 18); ctx.fillStyle = '#fff'; ctx.fill();
-      ctx.restore(); ctx.save(); D.rr(ctx, x, y, w, h, 18); ctx.clip();
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = phone ? 70 : 50; ctx.shadowOffsetY = 18;
+      D.rr(ctx, x, y, w, h, g.r); ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore(); ctx.save(); D.rr(ctx, x, y, w, h, g.r); ctx.clip();
       if (el) {
         ctx.drawImage(el, 0, 0, iw, ih, x, y, w, h);
         if (blur > 0) { ctx.globalAlpha = blur; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(D._blurred(el, iw, ih), x, y, w, h); ctx.globalAlpha = 1; }
@@ -390,12 +437,12 @@
       }
       if (blur > 0) { ctx.fillStyle = `rgba(8,8,14,${.55 * blur})`; ctx.fillRect(x, y, w, h); }
       ctx.restore();
-      ctx.save(); D.rr(ctx, x + .5, y + .5, w - 1, h - 1, 18); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      if (phone) D.phoneFrame(ctx, g);
+      else { ctx.save(); D.rr(ctx, x + .5, y + .5, w - 1, h - 1, 18); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
       // 放大的局部
       for (const [it, e] of items) {
         const r = typeof it.r === 'function' ? it.r(t) : it.r, rw = r[2] - r[0], rh = r[3] - r[1];
-        const s = Math.min((it.maxW || 1640) / rw, (it.maxH || 720) / rh), tw = rw * s, th = rh * s;
-        const tx = (it.cx || 980) - tw / 2, ty = (it.cy || 450) - th / 2;
+        const T = D.focusGeom(r, it), tw = T.w, th = T.h, tx = T.x, ty = T.y;
         const ox = x + r[0] * k, oy = y + r[1] * k, ow = rw * k, oh = rh * k;
         const px = lerp(ox, tx, e), py = lerp(oy, ty, e), pw = lerp(ow, tw, e), ph = lerp(oh, th, e);
         ctx.save(); ctx.globalAlpha = clamp(e * 1.6);

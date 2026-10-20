@@ -2,7 +2,8 @@
  * 第 1 段 0–29.85：开头（成果前置、需求引入、预告流程）
  * 第 2 段 29.85–66.45：① 查文献（文献检索 Skill → 对接学术库 → 结构化梳理）
  * 第 3 段 66.45–92.0：② 出报告（召唤教学设计专家 → 指令 → 报告结构 → 参考文献分级）
- * 第 4 段 92.0–122.35：③ 做课件（调用仿真技能 → 交互课件）+ 沉淀个人 Skill + 手机远程
+ * 第 4 段 92.0–121.95：③ 做课件（调用仿真技能 → 交互课件）+ 沉淀个人 Skill + 手机远程
+ * 第 5 段 121.95–147.0：结尾（今非昔比 → 单点到工作流 → 回顾三步 → 一站式 → 网页端/桌面端 → 下期见）
  * 口播时间 V（原口播秒数）→ 成片时间 T。剪掉超过 0.45 秒的停顿；插入的停顿放大标题。
  */
 (function () {
@@ -27,11 +28,13 @@
     [91.18, 108.48, 93.20],
     [108.93, 113.90, 110.50],
     [114.22, 120.50, 115.47],
+    [121.00, 140.30, 121.95],
+    [140.72, 145.95, 141.25],
   ];
   const T = v => { for (const [a, b, t] of VOICE) if (v >= a - 0.05 && v <= b + 0.05) return t + (v - a); return null; };
   const V = t => { for (const [a, b, t0] of VOICE) if (t >= t0 && t <= t0 + (b - a)) return a + (t - t0); return null; };
-  const DUR = 122.35;
-  const SEG2 = 29.85, SEG3 = 66.45, SEG4 = 92.0;   // 各段起点（预览页的分段按钮跳到这里）
+  const DUR = 147.0;
+  const SEG2 = 29.85, SEG3 = 66.45, SEG4 = 92.0, SEG5 = 121.95;   // 各段起点（预览页的分段按钮跳到这里）
 
   /* ---------- 字幕（口播时间） ---------- */
   const SUBS = [
@@ -69,6 +72,11 @@
     [108.93, 109.80, '整个流程走下来'], [109.85, 111.95, '还能沉淀成个人专属Skill'], [112.10, 113.90, '后续可以一键复用'],
     [114.22, 115.20, '就算出门在外'], [115.22, 117.75, '手机也可以直接远程操作电脑干活'],
     [118.02, 119.05, '工作照样继续跑'], [119.10, 120.50, '不用守在电脑旁边'],
+    // 第 5 段
+    [121.03, 122.25, 'AI能力真的是'], [122.27, 123.15, '已经今非昔比了'], [123.22, 124.30, '从单点回答问题'], [124.40, 126.91, '到承接一整套专业的工作流'],
+    [127.20, 128.45, '变化呢是肉眼可见'], [128.83, 130.70, '从文献整理到专业的研究报告'], [130.80, 132.25, '再到立体交互式课件'],
+    [132.62, 134.88, '库库AI一款工具就能一站式落地'], [135.21, 137.40, '这才是专业AI办公该有的样子'], [137.76, 140.15, '这个工具网页端和桌面端都能用'],
+    [140.75, 142.62, '好了 以上就是本期视频的全部内容'], [142.64, 144.36, '大家有什么想看的 评论区告诉我'], [144.38, 145.85, '我是阿亮 我们下期再见'],
   ].map(([a, b, s]) => [T(a), T(b), s]);
 
   /* ---------- 主播 ---------- */
@@ -93,6 +101,8 @@
     return [clamp(cx - S / 2, 0, ANCHOR_W - S), clamp(top - .08 * S, 0, ANCHOR_H - S), S, S];
   }
   function pip(ctx, t, E, t0, t1) {
+    if (window.__jyPip) window.__jyPip.add(t0.toFixed(3) + ',' + t1.toFixed(3));   // 导出剪映：记下小圆窗的时间
+    if (D.noPip) return;
     const k = ease.back(prog(t, t0, t0 + .35)) * (1 - ease.out(prog(t, t1 - .2, t1)));
     if (k <= 0) return;
     ctx.save(); ctx.translate(PIP.x, PIP.y); ctx.scale(k, k);
@@ -100,15 +110,19 @@
     ctx.restore();
   }
   /** 真人大画面：慢慢推近；close=true 用近景 */
+  /** 真人全屏画面的位置：人物水平居中；头顶留白全景约 12%、近景约 8%；慢慢推近 */
+  function anchorGeom(t, t0, t1, close) {
+    const p = prog(t, t0, t1), z = close ? lerp(1.16, 1.21, p) : lerp(1.06, 1.11, p);
+    const k = 1920 / ANCHOR_W * z, w = ANCHOR_W * k, h = ANCHOR_H * k, [hx, ht] = head(anchorV(t));
+    return { x: clamp(960 - hx * k, 1920 - w, 0), y: clamp((close ? 86 : 130) - ht * k, 1080 - h, 0), w, h, k };
+  }
   function anchorFull(t0, t1, o = {}) {
     return {
+      kind: 'anchor', close: !!o.close,
       t0, t1, draw(ctx, t, E) {
         const el = anchorEl(E, t); if (!el) return;
-        // 人物水平居中；头顶留白：全景约 12%，近景约 8%；慢慢推近
-        const p = prog(t, t0, t1), z = o.close ? lerp(1.16, 1.21, p) : lerp(1.06, 1.11, p);
-        const k = 1920 / ANCHOR_W * z, dw = ANCHOR_W * k, dh = ANCHOR_H * k, [hx, ht] = head(anchorV(t));
-        const dx = clamp(960 - hx * k, 1920 - dw, 0), dy = clamp((o.close ? 86 : 130) - ht * k, 1080 - dh, 0);
-        ctx.drawImage(el, dx, dy, dw, dh);
+        const g = anchorGeom(t, t0, t1, o.close);
+        ctx.drawImage(el, g.x, g.y, g.w, g.h);
         // 进场：0.18 秒白闪 / 推近，避免硬切
         const f = 1 - prog(t, t0, t0 + .18); if (f > 0 && o.flash !== false) { ctx.fillStyle = `rgba(255,255,255,${.35 * f})`; ctx.fillRect(0, 0, 1920, 1080); }
       },
@@ -125,12 +139,12 @@
    *  get(t, E) 返回 {el, iw, ih, focus:[...]}；窗口从右侧甩进来，左下角主播小圆窗 */
   function recScene(t0, t1, get, o = {}) {
     return {
+      kind: 'rec', get, opts: o,
       t0, t1, draw(ctx, t, E) {
         D.bg(ctx, t, o.bg);
         const R = get(t, E), inK = o.noIn ? 1 : ease.out(prog(t, t0, t0 + .32));
         ctx.save(); ctx.translate(960 + (1 - inK) * 1100, 508); ctx.rotate((1 - inK) * .06); ctx.translate(-960, -508);
-        // 竖屏手机录屏：底部停在字幕上方，不让字幕压住手机画面
-        D.rec(ctx, t, R.el, R.iw, R.ih, { focus: R.focus, box: R.ih > R.iw ? [120, 28, 1680, 900] : undefined });
+        D.rec(ctx, t, R.el, R.iw, R.ih, { focus: R.focus });   // 竖屏自动按手机画（外框 + 虚化铺底）
         ctx.restore();
         pip(ctx, t, E, t0 + .05, t1);
       },
@@ -568,19 +582,151 @@
   // 33  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
   scenes.push(anchorFull(T(107.40), T(109.80), { close: true }));
 
-  // 阿亮 10-20：以下都用原录屏整段快进播放，按口播分段变速对齐，不再逐个放大框选
-  // 34  111.37–115.47 「还能沉淀成个人专属Skill，后续可以一键复用」发出指令 → 创建成功 → 我的技能 → 使用 → 输入框
-  scenes.push(recScene(T(109.80), T(114.22), (t, E) => ({ el: E.video('c05', t - T(109.80)), iw: 1920, ih: 1080 })));
+  // 阿亮 10-20：用原录屏，挑重点步骤，1–1.3 倍速（不逐个放大）
+  // 34  111.37–113.73 「还能沉淀成个人专属Skill」发出沉淀指令 → 「个人技能已成功创建并注册」（原速）
+  scenes.push(recScene(T(109.80), T(112.16), (t, E) => ({ el: E.video('c05a', t - T(109.80)), iw: 1920, ih: 1080 })));
 
-  // 35  115.47–116.60 「就算出门在外」电脑端打开「让手机也能控制电脑」
-  const tPh = 116.60;
-  scenes.push(recScene(T(114.22), tPh, (t, E) => ({ el: E.video('c06r', t - T(114.22)), iw: 1920, ih: 1080 })));
+  // 35  113.73–115.47 「后续可以一键复用」技能卡 → 使用 → 输入框出现「/可视化教研模板」（1.15 倍）
+  scenes.push(recScene(T(112.16), T(114.22), (t, E) => ({ el: E.video('c05b', t - T(112.16)), iw: 1920, ih: 1080 }), { noIn: true }));
 
-  // 36  116.60–119.10 「手机也可以直接远程操作电脑干活」手机：选电脑和文件夹 → 输入指令 → 发送
-  scenes.push(recScene(tPh, 119.10, (t, E) => ({ el: E.video('c07a', t - tPh), iw: 720, ih: 1560 })));
+  // 36  115.47–116.52 「就算出门在外」电脑端打开「让手机也能控制电脑」（原速）
+  scenes.push(recScene(T(114.22), T(115.27), (t, E) => ({ el: E.video('c06r', t - T(114.22)), iw: 1920, ih: 1080 })));
 
-  // 37  119.10–122.35 「工作照样继续跑，不用守在电脑旁边」手机：PPT 生成完成 → 预览
-  scenes.push(recScene(119.10, DUR, (t, E) => ({ el: E.video('c07b', t - 119.10), iw: 720, ih: 1560 }), { noIn: true }));
+  // 37  116.52–118.98 「手机也可以直接远程操作电脑干活」手机：输入指令 → 发送（1.14 倍）
+  scenes.push(recScene(T(115.27), T(117.73), (t, E) => ({ el: E.video('c07a', t - T(115.27)), iw: 720, ih: 1560 })));
+
+  // 38  118.98–122.35 「工作照样继续跑，不用守在电脑旁边」手机：PPT 生成完成 → 翻看 PPT
+  scenes.push(recScene(T(117.73), SEG5, (t, E) => ({ el: E.video('c07b', t - T(117.73)), iw: 720, ih: 1560 }), { noIn: true }));
+
+  /* ================= 第 5 段：结尾 ================= */
+
+  // 40  121.95–124.10 「AI能力真的是已经今非昔比了」真人
+  scenes.push(anchorFull(SEG5, T(123.15)));
+
+  /** 三步卡片（查文献 / 出报告 / 做课件）横排；at[i] 出现时间 */
+  function stepRow(ctx, t, at, o = {}) {
+    const cw = o.cw || 330, ch = o.ch || 150, gap = o.gap || 92, cy = o.cy || 470, x0 = (o.cx || 1080) - (3 * cw + 2 * gap) / 2;
+    NAV.forEach(([name, col], i) => {
+      const k = ease.back(prog(t, at[i], at[i] + .35)); if (k <= 0) return;
+      const cx = x0 + i * (cw + gap) + cw / 2;
+      if (i > 0) {   // 箭头
+        const ak = prog(t, at[i] - .1, at[i] + .2), ax = cx - cw / 2 - gap + 12, aw = (gap - 24) * ak;
+        ctx.save(); ctx.strokeStyle = '#b9ff00'; ctx.fillStyle = '#b9ff00'; ctx.lineWidth = 8; ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.moveTo(ax, cy); ctx.lineTo(ax + aw, cy); ctx.stroke();
+        if (ak > .9) { ctx.beginPath(); ctx.moveTo(ax + aw + 6, cy); ctx.lineTo(ax + aw - 16, cy - 16); ctx.lineTo(ax + aw - 16, cy + 16); ctx.fill(); }
+        ctx.restore();
+      }
+      ctx.save(); ctx.translate(cx, cy + (1 - k) * 60); ctx.scale(k, k); ctx.globalAlpha = clamp(k * 1.5) * (o.alpha == null ? 1 : o.alpha);
+      ctx.shadowColor = col; ctx.shadowBlur = 40; D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 24); ctx.fillStyle = 'rgba(16,16,26,.92)'; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.lineWidth = 7; ctx.strokeStyle = col; ctx.stroke();
+      ctx.beginPath(); ctx.arc(-cw / 2 + 62, 0, 34, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.stroke();
+      D.text(ctx, String(i + 1), -cw / 2 + 62, 3, { size: 46, color: col, shadow: false });
+      D.text(ctx, name, 38, 4, { size: 72, color: '#fff' });
+      ctx.restore();
+    });
+  }
+
+  // 41  124.10–128.10 「从单点回答问题，到承接一整套专业的工作流」一个问答气泡 → 三步工作流串起来
+  {
+    const t0 = T(123.15), t1 = T(127.15), tB = T(123.25), tMove = T(124.45), AT = [T(124.75), T(125.29), T(125.77)];
+    scenes.push({
+      t0, t1, draw(ctx, t, E) {
+        D.bg(ctx, t, { c1: 'rgba(139,92,246,.35)', c2: 'rgba(185,255,0,.14)' });
+        // 气泡：先在中间弹出，再缩到左边变暗
+        const k = ease.back(prog(t, tB, tB + .35)), mv = ease.inOut(prog(t, tMove, tMove + .45));
+        if (k > 0) {
+          const bx = lerp(960, 250, mv), by = lerp(440, 470, mv), s = k * lerp(1.25, .72, mv);
+          ctx.save(); ctx.translate(bx, by); ctx.scale(s, s); ctx.globalAlpha = lerp(1, .55, mv);
+          ctx.shadowColor = 'rgba(139,92,246,.8)'; ctx.shadowBlur = 50;
+          D.rr(ctx, -150, -110, 300, 200, 50); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
+          ctx.beginPath(); ctx.moveTo(-70, 88); ctx.lineTo(-110, 140); ctx.lineTo(-20, 88); ctx.fill();
+          D.text(ctx, '？', 0, -6, { size: 170, color: '#7c3aed', shadow: false });
+          ctx.restore();
+        }
+        stepRow(ctx, t, AT, { cx: 1130, cw: 330, gap: 86 });
+        pip(ctx, t, E, t0 + .05, t1);
+      },
+    });
+  }
+
+  // 42  128.10–129.70 「变化呢是肉眼可见」真人近景
+  scenes.push(anchorFull(T(127.15), T(128.75), { close: true }));
+
+  // 43  129.70–133.40 「从文献整理，到专业的研究报告，再到立体交互式课件」三段原录屏快切回顾
+  scenes.push(recScene(T(128.75), T(129.55), (t, E) => ({ el: E.image('sort0'), iw: 2560, ih: 1440 })));
+  scenes.push(recScene(T(129.55), T(130.80), (t, E) => ({ el: E.image('rp_h1'), iw: 2560, ih: 1440 }), { noIn: true }));
+  scenes.push(recScene(T(130.80), T(132.45), (t, E) => ({ el: E.video('c08', 1.0 + (t - T(130.80))), iw: 1992, ih: 1440 }), { noIn: true }));
+
+  // 44  133.40–136.15 「库库AI一款工具就能一站式落地」三步卡片收拢进库库AI
+  {
+    const t0 = T(132.45), t1 = T(135.20), tIn = T(133.16), tOne = T(134.06);
+    scenes.push({
+      t0, t1, draw(ctx, t, E) {
+        D.bg(ctx, t, { c1: 'rgba(124,58,237,.5)', c2: 'rgba(185,255,0,.16)' });
+        const g = ease.inOut(prog(t, tIn - .25, tIn + .15));
+        ctx.save(); ctx.translate(960, 470); ctx.scale(lerp(1, .25, g), lerp(1, .25, g)); ctx.translate(-960, -470);
+        ctx.globalAlpha = 1 - g; stepRow(ctx, t, [t0, t0 + .08, t0 + .16], { cx: 960 }); ctx.restore();
+        const k = prog(t, tIn, tIn + .22);
+        if (k > 0) {
+          const s = lerp(1.9, 1, ease.out(k)), logo = E.tint('logo', '#ffffff');
+          const ring = prog(t, tIn + .15, tIn + .85);
+          if (ring > 0 && ring < 1) { ctx.save(); ctx.strokeStyle = `rgba(185,255,0,${.8 * (1 - ring)})`; ctx.lineWidth = 14 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(960, 450, 200 + ring * 650, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+          if (logo) { const w = 1100 * s, h = w * 249 / 960; ctx.save(); ctx.globalAlpha = clamp(k * 3); ctx.shadowColor = 'rgba(139,92,246,.9)'; ctx.shadowBlur = 60; ctx.drawImage(logo, 960 - w / 2, 450 - h / 2, w, h); ctx.restore(); }
+          // 「一站式」：三色光带从左扫到右，托住 logo
+          const u = ease.out(prog(t, tOne, tOne + .5));
+          if (u > 0) {
+            const W = 1000 * u, gr = ctx.createLinearGradient(460, 0, 1460, 0);
+            gr.addColorStop(0, '#2388FF'); gr.addColorStop(.5, '#F5DF27'); gr.addColorStop(1, '#39C872');
+            ctx.save(); ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 24; ctx.fillStyle = gr; D.rr(ctx, 460, 640, W, 16, 8); ctx.fill(); ctx.restore();
+          }
+        }
+        pip(ctx, t, E, t0 + .05, t1);
+      },
+    });
+  }
+
+  // 45  136.15–138.65 「这才是专业AI办公该有的样子」真人
+  scenes.push(anchorFull(T(135.20), T(137.70)));
+
+  // 46  138.65–141.25 「这个工具网页端和桌面端都能用」浏览器 + 桌面窗口，名字随口播弹出
+  {
+    const t0 = T(137.70), t1 = T(140.30), tW = T(138.48), tD = T(139.08);
+    scenes.push({
+      t0, t1, draw(ctx, t, E) {
+        D.bg(ctx, t);
+        const im = E.image('k_home'), w = 800, h = 450;
+        [[540, tW, '网页端', true], [1380, tD, '桌面端', false]].forEach(([cx, ta, name, browser], i) => {
+          const k = ease.out(prog(t, t0 + i * .12, t0 + i * .12 + .4)); if (k <= 0) return;
+          const x = cx - w / 2, y = 150 + (1 - k) * 80, top = browser ? 46 : 0;
+          ctx.save(); ctx.globalAlpha = clamp(k * 1.4);
+          ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+          D.rr(ctx, x, y - top, w, h + top, 16); ctx.fillStyle = browser ? '#e9e9ef' : '#fff'; ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+          if (browser) {   // 浏览器标题栏：三个点 + 地址栏
+            [['#ff5f57', 0], ['#febc2e', 1], ['#28c840', 2]].forEach(([c, j]) => { ctx.beginPath(); ctx.arc(x + 26 + j * 22, y - 23, 7, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); });
+            D.rr(ctx, x + 110, y - 36, w - 140, 26, 13); ctx.fillStyle = '#fff'; ctx.fill();
+          }
+          ctx.save(); D.rr(ctx, x, y, w, h, browser ? 0 : 16); ctx.clip(); if (im) ctx.drawImage(im, 0, 0, 2560, 1440, x, y, w, h); ctx.restore();
+          D.rr(ctx, x, y - top, w, h + top, 16); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.stroke();
+          ctx.restore();
+          // 名字徽章
+          const b = ease.back(prog(t, ta, ta + .35));
+          if (b > 0) {
+            ctx.save(); ctx.translate(cx, 735); ctx.scale(b, b);
+            D.rr(ctx, -150, -52, 300, 104, 52); ctx.fillStyle = i ? '#39C872' : '#2388FF'; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 30; ctx.fill(); ctx.shadowBlur = 0;
+            D.text(ctx, name, 0, 4, { size: 66, color: '#fff' });
+            ctx.restore();
+          }
+        });
+        pip(ctx, t, E, t0 + .05, t1);
+      },
+    });
+  }
+
+  // 47  141.25–147.0 「好了，以上就是本期视频的全部内容……我是阿亮，我们下期再见」真人，最后淡出
+  {
+    const A = anchorFull(T(140.30), DUR);
+    scenes.push({ t0: A.t0, t1: A.t1, kind: 'anchor', close: false, fadeOut: .7, draw(ctx, t, E) { A.draw(ctx, t, E); const f = prog(t, DUR - .7, DUR); if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, 1920, 1080); } } });
+  }
 
   /* ---------- 音频 ---------- */
   const audio = [];
@@ -597,8 +743,10 @@
   audio.push({ asset: 'music2', at: CH1_HIT - .05, from: 0, dur: 66.95 - CH1_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env2 });
   const env3 = [[CH2_HIT, .7], [67.6, .7], [67.75, LOW], [SEG4 - .1, LOW], [SEG4 + .3, 0]];
   audio.push({ asset: 'music3', at: CH2_HIT - .05, from: 0, dur: SEG4 + .3 - CH2_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env3 });
-  const env4 = [[CH3_HIT, .7], [93.15, .7], [93.3, LOW], [DUR - .6, LOW], [DUR, 0]];
-  audio.push({ asset: 'music4', at: CH3_HIT - .05, from: 0, dur: DUR - CH3_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .5, env: env4 });
+  const env4 = [[CH3_HIT, .7], [93.15, .7], [93.3, LOW], [SEG5 - .2, LOW], [SEG5 + .3, 0]];
+  audio.push({ asset: 'music4', at: CH3_HIT - .05, from: 0, dur: SEG5 + .3 - CH3_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env4 });
+  const env5 = [[SEG5 - .2, LOW], [T(145.75), LOW], [T(145.75) + .3, .5], [DUR - .8, .5], [DUR, 0]];
+  audio.push({ asset: 'music5', at: SEG5 - .2, from: 0, dur: DUR - SEG5 + .2, gain: 1, fadeIn: .5, fadeOut: .8, env: env5 });
   const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
   // 转场音：峰值对齐切点（whoosh 峰在 0.71 秒）
   sfx('whoosh', 1.95 - .62, .5); sfx('whoosh', 4.93 - .62, .45); sfx('swish', 11.99 - .7, .45);
@@ -638,7 +786,13 @@
   sfx('swish', T(100.85) - .7, .35); [101.29, 101.45, 101.61].forEach(v => sfx('pop', T(v), .4));
   sfx('whoosh', T(104.20) - .62, .4);
   sfx('whoosh', T(109.80) - .62, .4);
-  sfx('whoosh', T(114.22) - .62, .4); sfx('whoosh', 116.60 - .62, .4); sfx('swish', 119.10 - .7, .3);
+  sfx('swish', T(112.16) - .7, .3); sfx('whoosh', T(114.22) - .62, .4); sfx('whoosh', T(115.27) - .62, .4); sfx('swish', T(117.73) - .7, .3);
+  // 第 5 段
+  sfx('whoosh', T(123.15) - .62, .4); sfx('pop', T(123.25), .5); sfx('swish', T(124.45) - .5, .3);
+  [124.75, 125.29, 125.77].forEach(v => sfx('pop', T(v), .45));
+  sfx('whoosh', T(128.75) - .62, .45); sfx('swish', T(129.55) - .7, .35); sfx('swish', T(130.80) - .7, .35);
+  sfx('whoosh', T(132.45) - .62, .4); sfx('thud', T(133.16) - .17, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
+  sfx('whoosh', T(137.70) - .62, .4); sfx('pop', T(138.48), .5); sfx('pop', T(139.08), .5);
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -661,23 +815,25 @@
     rp_h3: { type: 'image', src: A + 'rp_h3.jpg' }, rp_h4: { type: 'image', src: A + 'rp_h4.jpg' },
     c04a: { type: 'video', src: { mp4: A + 'c04a.mp4', webm: A + 'c04a.webm' } },
     c08c: { type: 'video', src: { mp4: A + 'c08c.mp4', webm: A + 'c08c.webm' } },
-    c05: { type: 'video', src: { mp4: A + 'c05.mp4', webm: A + 'c05.webm' } },
+    c05a: { type: 'video', src: { mp4: A + 'c05a.mp4', webm: A + 'c05a.webm' } },
+    c05b: { type: 'video', src: { mp4: A + 'c05b.mp4', webm: A + 'c05b.webm' } },
     c06r: { type: 'video', src: { mp4: A + 'c06r.mp4', webm: A + 'c06r.webm' } },
     c07a: { type: 'video', src: { mp4: A + 'c07a.mp4', webm: A + 'c07a.webm' } },
     c07b: { type: 'video', src: { mp4: A + 'c07b.mp4', webm: A + 'c07b.webm' } },
-    k_file: { type: 'image', src: A + 'k_file.jpg' },
+    k_file: { type: 'image', src: A + 'k_file.jpg' }, k_home: { type: 'image', src: A + 'k_home.jpg' },
     logo: { type: 'image', src: A + 'logo.png' },
-    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' },
+    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' }, music5: { type: 'audio', src: A + 'music5.mp3' },
   };
   for (const n of ['whoosh', 'swish', 'rise', 'thud', 'dong', 'pop', 'shine', 'scribble']) assets[n] = { type: 'audio', src: A + `sfx_${n}.mp3` };
 
   window.PROJECT = {
-    title: '库库AI_第1-4段_试剪', width: 1920, height: 1080, duration: DUR,
+    title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: DUR,
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
     assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
-    checks: [107.0, 108.9, 110.0, 112.3, 114.5, 116.0, 117.3, 118.6, 119.8, 121.6],
-    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件']],
+    checks: [123.0, 124.6, 126.0, 127.6, 129.0, 130.2, 131.2, 132.8, 134.0, 135.6, 137.0, 139.2, 140.6, 143.0, 146.8],
+    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件'], [SEG5, '第 5 段 · 结尾']],
     SUBS, T, V,
+    jy: { anchorV, anchorGeom, pipSrc, PIP, VOICE, ANCHOR_W, ANCHOR_H },   // 导出剪映工程用（剪辑工程/jy_probe.js）
   };
 })();
