@@ -42,17 +42,27 @@ still "03 生成教研报告.mp4" 10.5 "$M_DS2" rp_h2
 still "03 生成教研报告.mp4" 12.0 "$M_DS2" rp_h3
 still "03 生成教研报告.mp4" 14.5 "$M_DS2" rp_h4
 still "03 生成教研报告.mp4" 16.0 "$M_DS2" rp_refs
-# 第 4 段（③ 做课件 + 沉淀技能 + 远程）：选「离线互动科学仿真」技能（放慢 1.28 倍）、拖动锚点和滑块（1.43 倍速）、远程权限开关
+# 第 4 段（③ 做课件 + 沉淀技能 + 远程）：选「离线互动科学仿真」技能（放慢 1.28 倍）、文件卡
 enc "$S/04 3D课件模型.mp4" 0.8 3.8 "$M_DS,setpts=PTS*1.283" c04a
-enc "$S/08 HTML 3D交互.mp4" 0 4.4 "setpts=PTS/1.43" c08b
-enc "$S/06 远程1.mp4" 6.0 7.2 "null" c06
 still "04 3D课件模型.mp4" 15.0 "$M_DS" k_file
-still "05 沉淀技能.mp4" 5.2 "$M_DS" k_skill
-still "05 沉淀技能.mp4" 14.3 "drawbox=x=1080:y=955:w=290:h=60:color=0xF5F5F5@1:t=fill" k_use
-# 手机录屏（竖屏 1440×3120）：输入指令、生成完成、PPT 预览；底部模型名盖掉（不用 5–7 秒的模型菜单）
-still "07 远程-手机.mp4" 10.0 "drawbox=x=420:y=2800:w=580:h=85:color=0xEDEDED@1:t=fill" ph_cmd
-still "07 远程-手机.mp4" 15.0 "drawbox=x=230:y=2800:w=500:h=85:color=white@1:t=fill" ph_done
-still "07 远程-手机.mp4" 19.0 "null" ph_ppt
+# 阿亮 10-20：拖锚点/滑块、沉淀技能、远程都用原录屏整段快进播放，按口播分段变速对齐（不再逐个放大框选）
+# encx 输入 滤镜图（输出标签 [o]） 输出名 [缩放]
+encx(){
+  ffmpeg -v error -y -i "$1" -an -filter_complex "$2" -map "[o]" -r 30 -g 15 -c:v libx264 -preset slow -crf "${CRF:-23}" -pix_fmt yuv420p -movflags +faststart "$O/$3.mp4"
+  ffmpeg -v error -y -i "$1" -an -filter_complex "$2" -map "[o]" -r 30 -g 15 -c:v libvpx-vp9 -b:v 0 -crf "${WCRF:-36}" -row-mt 1 -deadline good -cpu-used 4 "$O/$3.webm"
+}
+seg(){ echo "[s$1]trim=$2:$3,setpts=(PTS-STARTPTS)/$4[p$1]"; }   # 第几段 起 止 倍速
+# 08 拖锚点 → 拖滑块：1.0–8.6 秒，2.47 倍速
+encx "$S/08 HTML 3D交互.mp4" "[0:v]trim=1.0:8.6,setpts=(PTS-STARTPTS)/2.467[o]" c08c
+# 05 沉淀技能：0.3–5.6 发出指令→创建成功（2.69 倍）；5.6–14.6 我的技能→使用→输入框（4.15 倍）
+encx "$S/05 沉淀技能.mp4" "[0:v]drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill:enable='lt(t,7.8)',drawbox=x=1080:y=955:w=290:h=60:color=0xF5F5F5@1:t=fill:enable='gte(t,13.6)',scale=1920:1080,split=2[s1][s2];$(seg 1 0.3 5.6 2.69);$(seg 2 5.6 14.6 4.147);[p1][p2]concat=n=2:v=1[o]" c05
+# 06 电脑端打开远程权限：3.0–7.6，4.38 倍
+encx "$S/06 远程1.mp4" "[0:v]trim=3.0:7.6,setpts=(PTS-STARTPTS)/4.38,scale=1920:1080[o]" c06r
+# 07 手机：1.5–4.9 选位置/文件夹 + 7.4–11.6 输入并发送（跳过 5–7 秒的模型菜单），3.09 倍
+M7='drawbox=x=420:y=1660:w=470:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,7.3\,9.8),drawbox=x=420:y=2800:w=580:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,9.3\,12.2),drawbox=x=230:y=2800:w=500:h=85:color=0xEDEDED@1:t=fill:enable=between(t\,12.2\,17.6)'
+encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,split=2[s1][s2];$(seg 1 1.5 4.9 3.09);$(seg 2 7.4 11.6 3.09);[p1][p2]concat=n=2:v=1[o]" c07a
+# 07 手机：14.6–16.4 生成完成（1.5 倍）+ 18.0–29.0 预览 PPT（5.07 倍）
+encx "$S/07 远程-手机.mp4" "[0:v]$M7,scale=720:1560,split=2[s1][s2];$(seg 1 14.6 16.4 1.5);$(seg 2 18.0 29.0 5.07);[p1][p2]concat=n=2:v=1[o]" c07b
 cp "库库AI-logo.png" "$O/logo.png"
 # 口播：前 31 秒，统一响度 -16 LUFS（混上音乐后整体约 -14）
 ffmpeg -v error -y -i "$S/00 阿亮口播 低清.mp4" -t 121 -vn -af "highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11" -ar 44100 -ac 1 -c:a libmp3lame -b:a 128k "$O/voice.mp3"

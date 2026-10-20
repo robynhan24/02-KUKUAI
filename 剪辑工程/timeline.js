@@ -87,10 +87,10 @@
     const i = clamp(Math.floor(v), 0, H.length - 1), j = Math.min(H.length - 1, i + 1), f = clamp(v - i);
     return [lerp(H[i][0], H[j][0], f), lerp(H[i][1], H[j][1], f)];
   }
-  /** 小圆窗取的区域：脸在圆里水平居中、略高于中心（脸 + 肩） */
+  /** 小圆窗取的区域：脸水平居中，头在圆的上部，多露出肩膀和上半身（阿亮 10-20） */
   function pipSrc(v) {
-    const S = 270, [cx, top] = head(v);
-    return [clamp(cx - S / 2, 0, ANCHOR_W - S), clamp(top + 62 - .44 * S, 0, ANCHOR_H - S), S, S];
+    const S = 310, [cx, top] = head(v);
+    return [clamp(cx - S / 2, 0, ANCHOR_W - S), clamp(top - .08 * S, 0, ANCHOR_H - S), S, S];
   }
   function pip(ctx, t, E, t0, t1) {
     const k = ease.back(prog(t, t0, t0 + .35)) * (1 - ease.out(prog(t, t1 - .2, t1)));
@@ -129,7 +129,8 @@
         D.bg(ctx, t, o.bg);
         const R = get(t, E), inK = o.noIn ? 1 : ease.out(prog(t, t0, t0 + .32));
         ctx.save(); ctx.translate(960 + (1 - inK) * 1100, 508); ctx.rotate((1 - inK) * .06); ctx.translate(-960, -508);
-        D.rec(ctx, t, R.el, R.iw, R.ih, { focus: R.focus });
+        // 竖屏手机录屏：底部停在字幕上方，不让字幕压住手机画面
+        D.rec(ctx, t, R.el, R.iw, R.ih, { focus: R.focus, box: R.ih > R.iw ? [120, 28, 1680, 900] : undefined });
         ctx.restore();
         pip(ctx, t, E, t0 + .05, t1);
       },
@@ -561,52 +562,25 @@
     ] }],
   })));
 
-  // 32  106.22–109.42 「拖动锚点或滑块，抽象概念的几何本质」放大拖动锚点 → 移到滑块（1.43 倍速）
-  {
-    const t0 = T(104.20), R1 = [150, 700, 720, 1160], R2 = [700, 1080, 1340, 1320], tS = T(104.92);
-    scenes.push(recScene(t0, T(107.40), (t, E) => ({
-      el: E.video('c08b', t - t0), iw: 1992, ih: 1440,
-      focus: [{ at: t0 + .25, r: tt => lerpR(R1, R2, ease.inOut(prog(tt, tS, tS + .45))), maxH: 720 }],
-    })));
-  }
+  // 32  106.22–109.42 「拖动锚点或滑块，抽象概念的几何本质」原录屏整屏：拖锚点 → 拖滑块（2.47 倍速，不放大）
+  scenes.push(recScene(T(104.20), T(107.40), (t, E) => ({ el: E.video('c08c', t - T(104.20)), iw: 1992, ih: 1440 })));
 
-  // 33  109.42–111.33 「一眼就能看明白。整个流程走下来」真人近景
+  // 33  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
   scenes.push(anchorFull(T(107.40), T(109.80), { close: true }));
 
-  // 34  111.33–113.73 「还能沉淀成个人专属Skill」放大：指令「沉淀成我的个人专属 Skill」→「个人技能已成功创建并注册」
-  scenes.push(recScene(T(109.80), T(112.16), (t, E) => ({
-    el: E.image('k_skill'), iw: 2560, ih: 1440,
-    focus: [{ at: T(109.80) + .3, r: [540, 180, 2520, 1000], marks: [
-      { r: [1688, 225, 2098, 272], at: T(110.12), dur: .5 }, { r: [552, 630, 1430, 680], at: T(110.90), dur: .5 },
-    ] }],
-  })));
+  // 阿亮 10-20：以下都用原录屏整段快进播放，按口播分段变速对齐，不再逐个放大框选
+  // 34  111.37–115.47 「还能沉淀成个人专属Skill，后续可以一键复用」发出指令 → 创建成功 → 我的技能 → 使用 → 输入框
+  scenes.push(recScene(T(109.80), T(114.22), (t, E) => ({ el: E.video('c05', t - T(109.80)), iw: 1920, ih: 1080 })));
 
-  // 35  113.73–115.47 「后续可以一键复用」放大输入框里的「/可视化教研模板」
-  scenes.push(recScene(T(112.16), T(114.22), (t, E) => ({
-    el: E.image('k_use'), iw: 2560, ih: 1440,
-    focus: [{ at: T(112.16) + .25, r: [560, 580, 2480, 1000], marks: [{ r: [600, 700, 870, 750], at: T(113.00), kind: 'box' }] }],
-  })));
+  // 35  115.47–116.60 「就算出门在外」电脑端打开「让手机也能控制电脑」
+  const tPh = 116.60;
+  scenes.push(recScene(T(114.22), tPh, (t, E) => ({ el: E.video('c06r', t - T(114.22)), iw: 1920, ih: 1080 })));
 
-  // 36  115.47–116.52 「就算出门在外」电脑端打开「让手机也能控制电脑」权限
-  scenes.push(recScene(T(114.22), T(115.27), (t, E) => ({
-    el: E.video('c06', t - T(114.22)), iw: 2560, ih: 1440,
-    focus: [{ at: T(114.22) + .2, r: [270, 720, 1880, 980], marks: [{ r: [1560, 780, 1830, 970], at: T(114.55), kind: 'box' }] }],
-  })));
+  // 36  116.60–119.10 「手机也可以直接远程操作电脑干活」手机：选电脑和文件夹 → 输入指令 → 发送
+  scenes.push(recScene(tPh, 119.10, (t, E) => ({ el: E.video('c07a', t - tPh), iw: 720, ih: 1560 })));
 
-  // 37  116.52–118.98 「手机也可以直接远程操作电脑干活」手机录屏（竖屏）→ 放大输入的指令
-  scenes.push(recScene(T(115.27), T(117.73), (t, E) => ({
-    el: E.image('ph_cmd'), iw: 1440, ih: 3120,
-    focus: [{ at: T(115.27) + .45, r: [40, 2290, 1400, 2790], marks: [{ r: [110, 2495, 1090, 2555], at: T(115.90), dur: .6 }] }],
-  })));
-
-  // 38  118.98–120.41 「工作照样继续跑」手机上看到「PPT 已生成并发布完成，共 28 页」
-  scenes.push(recScene(T(117.73), T(119.16), (t, E) => ({
-    el: E.image('ph_done'), iw: 1440, ih: 3120,
-    focus: [{ at: T(117.73) + .25, r: [30, 820, 1420, 1240], marks: [{ r: [60, 905, 990, 960], at: T(118.10), dur: .4 }] }],
-  }), { noIn: true }));
-
-  // 39  120.41–122.35 「不用守在电脑旁边」手机里直接预览生成的 PPT
-  scenes.push(recScene(T(119.16), DUR, (t, E) => ({ el: E.image('ph_ppt'), iw: 1440, ih: 3120, focus: [{ at: T(119.16) + .25, r: [0, 280, 1440, 1500] }] }), { noIn: true }));
+  // 37  119.10–122.35 「工作照样继续跑，不用守在电脑旁边」手机：PPT 生成完成 → 预览
+  scenes.push(recScene(119.10, DUR, (t, E) => ({ el: E.video('c07b', t - 119.10), iw: 720, ih: 1560 }), { noIn: true }));
 
   /* ---------- 音频 ---------- */
   const audio = [];
@@ -663,11 +637,8 @@
   sfx('whoosh', T(98.45) - .62, .4); sfx('shine', T(99.17), .25);
   sfx('swish', T(100.85) - .7, .35); [101.29, 101.45, 101.61].forEach(v => sfx('pop', T(v), .4));
   sfx('whoosh', T(104.20) - .62, .4);
-  sfx('whoosh', T(109.80) - .62, .4); sfx('shine', T(110.12), .2); sfx('shine', T(110.90), .25);
-  sfx('swish', T(112.16) - .7, .35); sfx('pop', T(113.00), .5);
-  sfx('whoosh', T(114.22) - .62, .4); sfx('pop', T(114.55), .4);
-  sfx('whoosh', T(115.27) - .62, .45); sfx('shine', T(115.90), .25);
-  sfx('swish', T(117.73) - .7, .35); sfx('shine', T(118.10), .3); sfx('swish', T(119.16) - .7, .3);
+  sfx('whoosh', T(109.80) - .62, .4);
+  sfx('whoosh', T(114.22) - .62, .4); sfx('whoosh', 116.60 - .62, .4); sfx('swish', 119.10 - .7, .3);
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -689,10 +660,12 @@
     rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, rp_h2: { type: 'image', src: A + 'rp_h2.jpg' },
     rp_h3: { type: 'image', src: A + 'rp_h3.jpg' }, rp_h4: { type: 'image', src: A + 'rp_h4.jpg' },
     c04a: { type: 'video', src: { mp4: A + 'c04a.mp4', webm: A + 'c04a.webm' } },
-    c08b: { type: 'video', src: { mp4: A + 'c08b.mp4', webm: A + 'c08b.webm' } },
-    c06: { type: 'video', src: { mp4: A + 'c06.mp4', webm: A + 'c06.webm' } },
-    k_file: { type: 'image', src: A + 'k_file.jpg' }, k_skill: { type: 'image', src: A + 'k_skill.jpg' }, k_use: { type: 'image', src: A + 'k_use.jpg' },
-    ph_cmd: { type: 'image', src: A + 'ph_cmd.jpg' }, ph_done: { type: 'image', src: A + 'ph_done.jpg' }, ph_ppt: { type: 'image', src: A + 'ph_ppt.jpg' },
+    c08c: { type: 'video', src: { mp4: A + 'c08c.mp4', webm: A + 'c08c.webm' } },
+    c05: { type: 'video', src: { mp4: A + 'c05.mp4', webm: A + 'c05.webm' } },
+    c06r: { type: 'video', src: { mp4: A + 'c06r.mp4', webm: A + 'c06r.webm' } },
+    c07a: { type: 'video', src: { mp4: A + 'c07a.mp4', webm: A + 'c07a.webm' } },
+    c07b: { type: 'video', src: { mp4: A + 'c07b.mp4', webm: A + 'c07b.webm' } },
+    k_file: { type: 'image', src: A + 'k_file.jpg' },
     logo: { type: 'image', src: A + 'logo.png' },
     voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' },
   };
@@ -703,7 +676,7 @@
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
     assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
-    checks: [92.4, 94.5, 96.2, 97.8, 99.8, 101.8, 104.0, 105.5, 107.0, 108.9, 110.0, 112.8, 114.8, 116.2, 117.8, 119.6, 121.5],
+    checks: [107.0, 108.9, 110.0, 112.3, 114.5, 116.0, 117.3, 118.6, 119.8, 121.6],
     sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件']],
     SUBS, T, V,
   };
