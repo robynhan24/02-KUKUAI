@@ -68,7 +68,7 @@ with sync_playwright() as p:
 os.makedirs(MAT, exist_ok=True)
 for f in os.listdir(MAT):            # 旧的音频素材清掉（画面视频保留，由 render.py 生成）
     if not f.startswith('画面_'): os.remove(os.path.join(MAT, f))
-NICE = {'voice': '人声.mp3', 'music': '配乐1_开头.mp3', 'music2': '配乐2_查文献.mp3', 'music3': '配乐3_出报告.mp3'}
+NICE = {'voice': '人声.mp3', 'music': '配乐1_开头.mp3', 'music2': '配乐2_查文献.mp3', 'music3': '配乐3_出报告.mp3', 'music4': '配乐4_做课件.mp3'}
 def mat_path(asset):
     name = NICE.get(asset, ('音效_' + asset.replace('sfx_', '') + '.mp3') if asset not in NICE else None)
     if asset.startswith('music') and asset not in NICE: name = f'配乐_{asset}.mp3'
