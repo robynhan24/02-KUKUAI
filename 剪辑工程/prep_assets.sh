@@ -12,7 +12,7 @@ enc(){ # 输入 起 止 滤镜 输出名
   ffmpeg -v error -y -ss "$2" -to "$3" -i "$1" -an -vf "$4" -r 30 -g 15 -c:v libvpx-vp9 -b:v 0 -crf "${WCRF:-36}" -row-mt 1 -deadline good -cpu-used 4 "$O/$5.webm"
 }
 # 主播（低清 854×480，换高清口播后改这里）
-CRF=20 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 146.2 "null" anchor
+CRF=22 WCRF=32 enc "$S/00 阿亮口播 低清.mp4" 0 146.2 "null" anchor
 # 录屏一律用整屏画面（阿亮 10-20 要求：录屏全显，重点局部放大、背景虚化压暗）。
 # 国内模型名、快捷键提示用白块盖掉（剪辑规矩第 10、12 条）。
 M_DS='drawbox=x=975:y=1312:w=315:h=56:color=white@1:t=fill'          # 底部 DeepSeek-V4-Pro
