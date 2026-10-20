@@ -3,7 +3,7 @@
  */
 (function () {
   const D = KDraw, { clamp, lerp, prog, ease } = KUtil;
-  const A = '剪辑工程/assets/';
+  const A = window.ASSET_BASE || '剪辑工程/assets/';
 
   /* ---------- 口播剪辑表：[口播起, 口播止, 成片起] ---------- */
   const VOICE = [
