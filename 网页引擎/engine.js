@@ -403,7 +403,13 @@
         const p = ease.out(prog(t, m.at, m.at + (m.dur || .35))), fo = m.end != null ? 1 - prog(t, m.end - .2, m.end) : 1;
         const x = dx + m.r[0] * sc, y = dy + m.r[1] * sc, w = (m.r[2] - m.r[0]) * sc, h = (m.r[3] - m.r[1]) * sc;
         ctx.save();
-        if (m.kind === 'box') {   // 框选：橙红圆角框，框在量好的范围上（不压字），从稍大收到位
+        if (m.kind === 'click') { // 点击：从鼠标尖端扩散两圈涟漪
+          for (const d of [0, .14]) {
+            const q = prog(t, m.at + d, m.at + d + .55); if (q <= 0 || q >= 1) continue;
+            ctx.globalAlpha = A0 * (1 - q); ctx.lineWidth = 4; ctx.strokeStyle = '#ff5a1f';
+            ctx.beginPath(); ctx.arc(x, y, 10 + 46 * ease.out(q), 0, Math.PI * 2); ctx.stroke();
+          }
+        } else if (m.kind === 'box') {   // 框选：橙红圆角框，框在量好的范围上（不压字），从稍大收到位
           const g = 1 + (1 - p) * .08; ctx.globalAlpha = A0 * fo * p;
           ctx.lineWidth = m.lw || 5; ctx.strokeStyle = '#ff5a1f'; ctx.shadowColor = 'rgba(255,90,31,.5)'; ctx.shadowBlur = m.lw && m.lw < 4 ? 6 : 14;
           D.rr(ctx, x + w / 2 - w / 2 * g, y + h / 2 - h / 2 * g, w * g, h * g, Math.min(12, h / 4)); ctx.stroke();
@@ -439,9 +445,9 @@
       return { x: B[0] + (B[2] - w) / 2, y: B[1] + (B[3] - h) / 2, w, h, k, r: 18 };
     },
     /** 竖屏手机录屏的位置（屏幕区域，不含外框）；外框厚度 bezel */
-    phoneGeom(iw, ih) {
-      const h = 856, k = h / ih, w = iw * k;
-      return { x: 960 - w / 2, y: 46, w, h, k, r: 46, bezel: 15 };
+    phoneGeom(iw, ih, o = {}) {
+      const h = o.phoneH || 856, k = h / ih, w = iw * k;
+      return { x: 960 - w / 2, y: o.phoneY == null ? 46 : o.phoneY, w, h, k, r: 46 * h / 856, bezel: 15 };
     },
     /** 手机外框：深色机身 + 金属边 + 侧键（屏幕区域 x,y,w,h 外面一圈） */
     phoneFrame(ctx, g, alpha = 1) {
@@ -465,7 +471,7 @@
     rec(ctx, t, el, iw, ih, o = {}) {
       if (D.skipRec) return;                    // 导出剪映背景用：只画背景
       const phone = ih > iw;
-      const g = phone ? D.phoneGeom(iw, ih) : D.recGeom(iw, ih, o.box);
+      const g = phone ? D.phoneGeom(iw, ih, o) : D.recGeom(iw, ih, o.box);
       const { x, y, w, h, k } = g;
       const env = it => ease.inOut(prog(t, it.at, it.at + .4)) * (it.end != null ? 1 - ease.inOut(prog(t, it.end - .3, it.end)) : 1);
       const items = (o.focus || []).map(it => [it, env(it)]).filter(([, e]) => e > 0);

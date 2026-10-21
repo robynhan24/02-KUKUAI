@@ -28,7 +28,7 @@ full "$S/06 远程1.mp4" 2.8 8.4 "null" r06
 # 08 3D 交互课件（1992×1440，等比 1494×1080）
 full "$S/08 HTML 3D交互.mp4" 0 15.4 "null" r08 1494 1080
 # 07 手机（竖屏 720×1560）：输入指令发送 8.6–11.4 + 生成完成 14.6–16.0 + 翻看 PPT 18.0–20.5，原速连起来；底部模型名盖掉，不用 5–7 秒的模型菜单
-M7="drawbox=x=420:y=1660:w=470:h=85:color=0xEDEDED@1:t=fill:enable='between(t,7.3,9.8)',drawbox=x=420:y=2800:w=580:h=85:color=0xEDEDED@1:t=fill:enable='between(t,9.3,12.2)',drawbox=x=230:y=2800:w=500:h=85:color=0xEDEDED@1:t=fill:enable='between(t,12.2,17.6)'"
+M7="drawbox=x=420:y=1660:w=470:h=85:color=0xEDEDED@1:t=fill:enable='between(t,7.3,9.8)',drawbox=x=230:y=2800:w=520:h=85:color=0xEDEDED@1:t=fill:enable='between(t,9.3,12.2)',drawbox=x=230:y=2800:w=500:h=85:color=0xEDEDED@1:t=fill:enable='between(t,12.2,17.6)'"
 FC="[0:v]$M7,scale=720:1560,split=3[a][b][c];[a]trim=8.6:11.4,setpts=PTS-STARTPTS[p1];[b]trim=14.6:16.0,setpts=PTS-STARTPTS[p2];[c]trim=18.0:20.5,setpts=PTS-STARTPTS[p3];[p1][p2][p3]concat=n=3:v=1[o]"
 ffmpeg -v error -y -i "$S/07 远程-手机.mp4" -an -filter_complex "$FC" -map "[o]" -r 30 -g 15 -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -movflags +faststart "$O/c07.mp4"
 ffmpeg -v error -y -i "$S/07 远程-手机.mp4" -an -filter_complex "$FC" -map "[o]" -r 30 -g 15 -c:v libvpx-vp9 -b:v 0 -crf 36 -row-mt 1 -deadline good -cpu-used 4 "$O/c07.webm"

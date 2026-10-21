@@ -84,7 +84,7 @@
   const PIP = { x: 160, y: 920, d: 230 };       // 左下角，避开内容和字幕
   /** 成片时间 → 主播视频时间（停顿里继续往下走） */
   // 停顿里真人画面也看得见的地方：慢放「说完这句 → 下一句开口」之间那一小段，不露出没声音的口型，也不往回跳
-  const SLOW = [[18.87, 19.87, 19.50, 19.68]];
+  const SLOW = [];   // 10-21：停顿已去掉（见文件末尾 CUTS），不用慢放
   function anchorV(t) {
     for (const [a, b, v0, v1] of SLOW) if (t >= a && t < b) return v0 + (t - a) * (v1 - v0) / (b - a);
     let v = V(t);
@@ -142,7 +142,7 @@
     const k = prog(t, ta, ta + .22), s = lerp(1.7, 1, ease.out(k)) + Math.sin(prog(t, ta + .22, ta + .5) * Math.PI) * .04;
     const a = clamp(k * 3) * (1 - prog(t, tEnd - .3, tEnd)), logo = E.tint('logo', '#ffffff'); if (!logo) return;
     ctx.save(); ctx.globalAlpha = a;
-    const ring = prog(t, ta + .18, ta + .8);
+    const ring = o.ring === false ? 0 : prog(t, ta + .18, ta + .8);
     if (ring > 0 && ring < 1) { ctx.strokeStyle = `rgba(245,223,39,${.7 * (1 - ring)})`; ctx.lineWidth = 8 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(cx, cy, W * .3 + ring * W * .5, 0, Math.PI * 2); ctx.stroke(); }
     const w = W * s, h = w * 249 / 960;
     ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; ctx.drawImage(logo, cx - w / 2, cy - h / 2, w, h);
@@ -187,7 +187,7 @@
         const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t), rateAt(t));
         const layers = (o.layers || []).map(L => ({ r: L.r, el: E.video(L.asset, (t - t0 + (L.off || 0)) % L.len, 1) }));
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
-        if (o.ih > o.iw) D.rec(ctx, t, el, o.iw, o.ih, {});          // 竖屏手机：外框 + 虚化铺底
+        if (o.ih > o.iw) { D.rec(ctx, t, el, o.iw, o.ih, { phoneH: o.phoneH, phoneY: o.phoneY }); if (o.after) o.after(ctx, t, E); }   // 竖屏手机：外框 + 虚化铺底
         else {
           const dim = o.dim ? ease.inOut(prog(t, o.dim[0], o.dim[0] + .35)) * (1 - ease.inOut(prog(t, o.dim[1], o.dim[1] + .3))) : 0;
           const g = D.recFull(ctx, t, el, o.iw, o.ih, { cam: o.cam, marks: dim > .99 ? [] : o.marks, layers });
@@ -330,12 +330,10 @@
 
   scenes.push(blend(S5, S6));
 
-  // ⑤ 16.11–19.95 「哎，底下有网友就推荐了一个叫库库AI的工具」真人近景；停顿里库库AI logo 直接出现在右边空白处（重击同帧），真人慢放
-  const LOGO1 = 18.87 + .2;
-  scenes.push(anchorFull(16.11, 19.95, { close: true, extra: (ctx, t, E) => logoOn(ctx, t, E, LOGO1, 21.3) }));
-
-  // ⑦ 19.95–25.69 「我拿来一试，还真能一条龙跑下来。那今天我就手把手带你做一个完整的教研专题」真人（不再快切）
-  scenes.push(anchorFull(19.95, 25.69, { extra: (ctx, t, E) => logoOn(ctx, t, E, LOGO1, 21.3) }));
+  // ⑤ 16.11–25.69 「哎，底下有网友就推荐了一个叫库库AI的工具。我拿来一试，还真能一条龙跑下来。那今天我就手把手带你做一个完整的教研专题」
+  //    真人近景一个镜头接下去（两句中间不转场）；说到「库库AI」时 logo 直接出现在右边空白处（不加圆圈）
+  const LOGO1 = T(18.45);
+  scenes.push(anchorFull(16.11, 25.69, { close: true, extra: (ctx, t, E) => logoOn(ctx, t, E, LOGO1, 21.3, { ring: false }) }));
 
   // ⑧ 25.69–27.81 「从查文献到出课件」章节导航（秋芝-豆包式编号卡）
   const NAV = [['查文献', '#2388FF', T(25.80)], ['出报告', '#F5DF27', T(26.25)], ['做课件', '#39C872', T(26.65)]];
@@ -477,9 +475,11 @@
   {
     const t0 = T(69.30), tP = T(71.74);
     scenes.push(fullScene(t0, T(76.60), {
-      asset: 'r03', iw: 2560, ih: 1440, src: [[t0, .4, 1], [tP, 6.0, 0]], cuts: [tP],
+      // 录屏：鼠标 2.45 秒移到「教学设计专家」、2.85 秒点下去；对齐到口播说「教学设计专家」那几个字（T(70.51) 起）
+      asset: 'r03', iw: 2560, ih: 1440, src: [[t0, .8, (2.45 - .8) / (T(70.51) - t0)], [T(70.51), 2.45, 1], [T(70.51) + .33, 2.78, 0], [tP, 6.0, 0]], cuts: [tP],   // 2.78 秒：鼠标在「教学设计专家」上点下（下一帧菜单就收起了）
       cam: [[t0, null], [t0 + .5, [520, 820, 1520, 1360]], [tP, [1135, 455, 2500, 800], 0]],
       marks: [
+        { r: [1240, 1107, 1240, 1107], at: T(70.51) + .33, end: tP, kind: 'click' },
         { r: [2089, 493, 2455, 536], at: tP + .75 }, { r: [1157, 553, 1650, 595], at: tP + 1.0 },
         { r: [1157, 493, 1640, 536], at: T(72.95), dur: .5 }, { r: [1531, 672, 1877, 716], at: T(75.00), dur: .4 },
       ],
@@ -597,7 +597,46 @@
 
   // 26  115.47–121.95 「就算出门在外，手机也可以直接远程操作电脑干活，工作照样继续跑，不用守在电脑旁边」
   //     手机录屏（竖屏，加外框）原速连贯：输入指令发送 → PPT 生成完成 → 翻看 PPT
-  scenes.push(fullScene(T(114.22), SEG5, { asset: 'c07', iw: 720, ih: 1560, src: [[T(114.22), 0, 1.034]] }));
+  {
+    const t0 = T(114.22), R = 1.034, at = c => t0 + c / R;            // c：手机录屏里的秒数
+    const PH = 920, PY = 22, k = PH / 1560 / 2, px = 960 - 720 * PH / 1560 / 2;   // 手机屏幕在画面上的位置；k：原录屏（1440 宽）→ 画面
+    const P = (x, y) => [px + x * k, PY + y * k];
+    // 左：手机发出的指令；右：电脑端完成的结果 + 生成的 PPT 页面（都从手机录屏里裁出来，放大展示）
+    const CARDS = [
+      { img: 'ph_a', at: at(2.45), x: 36, y: 190, w: 660, label: '手机发出指令', col: '#2388FF', from: P(1395, 527), side: 'L' },
+      { img: 'ph_b', at: at(3.2), x: 1224, y: 230, w: 660, label: '电脑端自动完成', col: '#39C872', from: P(40, 695), side: 'R' },
+      { img: 'ph_c', at: at(4.4), x: 1224, y: 410, w: 660, label: null, col: '#39C872', from: P(1440, 1953), side: 'R' },
+    ];
+    scenes.push(fullScene(t0, SEG5, {
+      asset: 'c07', iw: 720, ih: 1560, src: [[t0, 0, R]], phoneH: PH, phoneY: PY,
+      after(ctx, t, E) {
+        for (const c of CARDS) {
+          const k1 = ease.out(prog(t, c.at, c.at + .5)); if (k1 <= 0) continue;
+          const im = E.image(c.img); if (!im) continue;
+          const h = c.w * im.height / im.width, dx = (1 - k1) * (c.side === 'L' ? 40 : -40);
+          const ex = c.side === 'L' ? c.x + c.w + dx : c.x + dx, ey = c.y + h / 2;
+          // 引线：从手机里对应的位置连到卡片
+          const lp = ease.out(prog(t, c.at, c.at + .35));
+          ctx.save(); ctx.globalAlpha *= .75; ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+          ctx.beginPath(); ctx.moveTo(c.from[0], c.from[1]); ctx.lineTo(lerp(c.from[0], ex, lp), lerp(c.from[1], ey, lp)); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle = c.col; ctx.shadowColor = c.col; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(c.from[0], c.from[1], 6, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          // 卡片
+          ctx.save(); ctx.globalAlpha *= k1; ctx.translate(dx, 0);
+          ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
+          D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'transparent';
+          ctx.save(); D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.clip(); ctx.drawImage(im, c.x, c.y, c.w, h); ctx.restore();
+          ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.55)'; D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.stroke();
+          if (c.label) {   // 卡片上方的小标签
+            ctx.font = '600 34px "KTitle", "PingFang SC", sans-serif'; const tw = ctx.measureText(c.label).width + 56;
+            D.rr(ctx, c.x, c.y - 66, tw, 52, 26); ctx.fillStyle = c.col; ctx.fill();
+            D.text(ctx, c.label, c.x + tw / 2, c.y - 38, { size: 34, color: '#fff', shadow: false });
+          }
+          ctx.restore();
+        }
+      },
+    }));
+  }
 
   /* ================= 第 5 段：结尾 ================= */
 
@@ -742,7 +781,7 @@
     gs1: { type: 'image', src: A + 'gs1.jpg' }, gs2: { type: 'image', src: A + 'gs2.jpg' },
     gs3: { type: 'image', src: A + 'gs3.jpg' }, gs4: { type: 'image', src: A + 'gs4.jpg' },
     sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
-    k_home: { type: 'image', src: A + 'k_home.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
+    k_home: { type: 'image', src: A + 'k_home.jpg' }, ph_a: { type: 'image', src: A + 'ph_a.png' }, ph_b: { type: 'image', src: A + 'ph_b.png' }, ph_c: { type: 'image', src: A + 'ph_c.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
     logo: { type: 'image', src: A + 'logo.png' },
     voice: { type: 'audio', src: A + 'voice.mp3' },
     m1: { type: 'video', src: { mp4: A + 'm1.mp4', webm: A + 'm1.webm' } }, m2: { type: 'video', src: { mp4: A + 'm2.mp4', webm: A + 'm2.webm' } }, m3: { type: 'video', src: { mp4: A + 'm3.mp4', webm: A + 'm3.webm' } },
@@ -750,13 +789,24 @@
   // 抠好背景的 3D 空镜（key_3d.py，20 帧/秒）
   for (let i = 0; i < 68; i++) assets['k3d' + i] = { type: 'image', src: A + `k3d/k3d_${String(i).padStart(3, '0')}.webp` };
 
+  /* ---------- 剪掉的空档（成片时间轴上整段去掉，后面的画面、口播、字幕整体往前接） ----------
+   * 10-21：「叫库库AI的工具」和「我拿来一试」之间原来插了 1 秒停顿给 logo，现在 logo 直接在说「库库AI」时出现，
+   *        停顿去掉，只留两句之间自然的 0.18 秒换气。上面的时间都还是去掉之前的，这里统一换算。 */
+  const CUTS = [[19.05, 19.87]];
+  const ext = t => { let d = 0; for (const [a, b] of CUTS) { if (t >= b) d += b - a; else if (t > a) d += t - a; } return t - d; };   // 剪之前 → 剪之后
+  const int = t => { for (const [a, b] of CUTS) if (t >= a) t += b - a; return t; };                                                      // 剪之后 → 剪之前
+  const scenesOut = scenes.map(sc => Object.assign(Object.create(sc), { t0: ext(sc.t0), t1: ext(sc.t1), draw: (ctx, t, E) => sc.draw(ctx, int(t), E, sc) }))
+    .filter(sc => sc.t1 - sc.t0 > 1e-3);
+  const audioOut = audio.map(a => Object.assign({}, a, { at: ext(a.at) }));
+  const overlayOut = (ctx, t, E) => overlay(ctx, int(t), E);
+
   window.PROJECT = {
-    title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: DUR,
+    title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: ext(DUR),
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
-    assets, scenes, overlay, audio, silence: A + 'silence.mp3',
+    assets, scenes: scenesOut, overlay: overlayOut, audio: audioOut, silence: A + 'silence.mp3',
     // 自查用：关键时间点
     checks: [1.0, 2.6, 4.6, 6.0, 7.6, 13.0, 15.0, 33.8, 47.0, 51.0, 53.0, 58.2, 60.8, 65.4, 71.5, 74.5, 84.0, 90.0, 94.3, 97.5, 99.5, 103.4, 106.6, 111.6, 113.8, 118.0, 131.5, 135.0, 139.5],
-    sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件'], [SEG5, '第 5 段 · 结尾']],
-    SUBS, T, V,
+    sections: [[0, '第 1 段 · 开头'], [ext(SEG2), '第 2 段 · 查文献'], [ext(SEG3), '第 3 段 · 出报告'], [ext(SEG4), '第 4 段 · 做课件'], [ext(SEG5), '第 5 段 · 结尾']],
+    SUBS, T: v => ext(T(v)), V: t => V(int(t)), ext, int,
   };
 })();
