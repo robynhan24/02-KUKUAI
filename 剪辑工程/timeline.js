@@ -103,8 +103,15 @@
     return [lerp(H[i][0], H[j][0], f), lerp(H[i][1], H[j][1], f)];
   }
   /** 小圆窗取的区域：脸水平居中，头在圆的上部，多露出肩膀和上半身（阿亮 10-20） */
+  let HS = null;
+  function headSmooth(v) {
+    const H = window.ANCHOR_TRACK; if (!H || v == null) return head(v);
+    if (!HS) HS = H.map((_, i) => { let x = 0, y = 0, n = 0; for (let j = Math.max(0, i - 2); j <= Math.min(H.length - 1, i + 2); j++) { x += H[j][0]; y += H[j][1]; n++; } return [x / n, y / n]; });
+    const i = clamp(Math.floor(v), 0, HS.length - 1), j = Math.min(HS.length - 1, i + 1), f = clamp(v - i);
+    return [lerp(HS[i][0], HS[j][0], f), lerp(HS[i][1], HS[j][1], f)];
+  }
   function pipSrc(v) {
-    const S = 310, [cx, top] = head(v);
+    const S = 310, [cx, top] = headSmooth(v);
     return [clamp(cx - S / 2, 0, ANCHOR_W - S), clamp(top - .08 * S, 0, ANCHOR_H - S), S, S];
   }
   function pip(ctx, t, E, t0, t1) {
@@ -114,24 +121,38 @@
   }
   /** 真人大画面：慢慢推近；close=true 用近景 */
   /** 真人全屏画面的位置：人物水平居中；头顶留白全景约 12%、近景约 8%；慢慢推近 */
-  function anchorGeom(t, t0, t1, close) {
-    const p = prog(t, t0, t1), z = close ? lerp(1.16, 1.21, p) : lerp(1.06, 1.11, p);
-    const k = 1920 / ANCHOR_W * z, w = ANCHOR_W * k, h = ANCHOR_H * k, [hx, ht] = head(anchorV(t));
+  const HEADAVG = {};
+  function avgHead(t0, t1) {
+    const key = t0.toFixed(2) + ',' + t1.toFixed(2); if (HEADAVG[key]) return HEADAVG[key];
+    let x = 0, y = 0, n = 0; for (let t = t0; t < t1; t += .25) { const [a, b] = head(anchorV(t)); x += a; y += b; n++; }
+    return (HEADAVG[key] = [x / n, y / n]);
+  }
+  function anchorGeom(t, t0, t1, close) {   // 阿亮 10-21：画面固定，不左右晃、不推
+    const z = close ? 1.18 : 1.08;
+    const k = 1920 / ANCHOR_W * z, w = ANCHOR_W * k, h = ANCHOR_H * k, [hx, ht] = avgHead(t0, t1);
     return { x: clamp(960 - hx * k, 1920 - w, 0), y: clamp((close ? 86 : 130) - ht * k, 1080 - h, 0), w, h, k };
   }
   function anchorFull(t0, t1, o = {}) {
     return {
       kind: 'anchor', close: !!o.close,
+      prep(E) { E.preload('anchor', anchorV(t0)); },
       t0, t1, draw(ctx, t, E) {
         const el = anchorEl(E, t); if (!el) return;
         const g = anchorGeom(t, t0, t1, o.close);
-        // 转场（阿亮 10-20：不再白闪）：从网格底淡入并轻推，结束前淡出
-        const kin = o.xin === 0 ? 1 : ease.out(prog(t, t0, t0 + .3)), kout = o.xout === 0 ? 1 : 1 - prog(t, t1 - .18, t1), a = Math.min(kin, kout);
+        // 阿亮 10-21：默认直接硬切（xin / xout 给秒数才淡入淡出）
+        const kin = !o.xin ? 1 : ease.out(prog(t, t0, t0 + o.xin)), kout = !o.xout ? 1 : 1 - prog(t, t1 - o.xout, t1), a = Math.min(kin, kout);
         if (a < 1) D.bg(ctx, t);
         const z = lerp(1.03, 1, kin);
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
         ctx.drawImage(el, g.x, g.y, g.w, g.h); ctx.restore();
         if (o.extra) o.extra(ctx, t, E);
+        if (o.xfrom && t < t0 + .5) {   // 从上一个画面叠化过来（上一个画面先画到离屏画布）
+          const k = ease.inOut(prog(t, t0, t0 + .5));
+          if (!window.__xa) { window.__xa = document.createElement('canvas'); window.__xa.width = 1920; window.__xa.height = 1080; }
+          const g2 = window.__xa.getContext('2d'); g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.clearRect(0, 0, 1920, 1080);
+          o.xfrom.draw(g2, t, E); pip(g2, t, E, t - 1, t + 1);
+          ctx.save(); ctx.globalAlpha = 1 - k; ctx.drawImage(window.__xa, 0, 0); ctx.restore();
+        }
       },
     };
   }
@@ -176,14 +197,15 @@
   function fullScene(t0, t1, o) {
     const srcAt = t => { let v = 0; for (const [ta, s0, r] of o.src) if (t >= ta - 1e-6) v = s0 + (t - ta) * r; return v; };
     const rateAt = t => { let v = 1; for (const [ta, , r] of o.src) if (t >= ta - 1e-6) v = r; return v; };
-    const xin = o.xin == null ? .35 : o.xin, xout = o.xout == null ? .22 : o.xout;
+    const xin = o.xin || 0, xout = o.xout || 0;   // 阿亮 10-21：换录屏直接硬切
     return {
-      kind: 'full', t0, t1, o, draw(ctx, t, E) {
+      kind: 'full', t0, t1, o,
+      prep(E) { if (!o.image) E.preload(o.asset, srcAt(t0)); for (const L of o.layers || []) E.preload(L.asset, (L.off || 0) % L.len); E.preload('anchor', anchorV(t0)); },
+      draw(ctx, t, E) {
         D.bg(ctx, t);
         let a = 1, z = 1;
         if (xin > 0 && t < t0 + xin) { const k = ease.out(prog(t, t0, t0 + xin)); a = k; z = lerp(1.05, 1, k); }
         if (xout > 0 && t > t1 - xout) { const k = prog(t, t1 - xout, t1); a = Math.min(a, 1 - k); z = lerp(1, 1.03, k); }
-        for (const c of o.cuts || []) { const d = Math.abs(t - c); if (d < .16) a = Math.min(a, d / .16); }
         const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t), rateAt(t));
         const layers = (o.layers || []).map(L => ({ r: L.r, el: E.video(L.asset, (t - t0 + (L.off || 0)) % L.len, 1) }));
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
@@ -376,7 +398,7 @@
   }
   {
     const t0 = 25.69, t1 = 27.81;
-    scenes.push({ t0, t1, draw(ctx, t, E) { D.bg(ctx, t); navDraw(ctx, t, t0, NAV.map(n => n[2]), -1); pip(ctx, t, E, t0 + .1, t1); } });
+    scenes.push({ t0, t1, draw(ctx, t, E) { D.bg(ctx, t); navDraw(ctx, t, t0, NAV.map(n => n[2]), -1); pip(ctx, t, E, t0, t1); } });
   }
 
   // ⑨ 27.81–29.85 「学会以后，从此教研不发愁」真人收尾
@@ -434,7 +456,7 @@
           ctx.beginPath(); ctx.arc(0, 0, 95, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 26; ctx.lineCap = 'round';
           ctx.beginPath(); ctx.moveTo(68, 68); ctx.lineTo(150, 150); ctx.stroke(); ctx.restore();
         }
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
@@ -623,12 +645,14 @@
   {
     const t0 = T(100.85), t1 = T(107.40), tX = t0 + .45, PW = 582, PH = PW * 562 / 533, PG = 40, PY = 140;
     const NAMES = ['m1', 'm2', 'm3'];
-    scenes.push({
-      kind: 'full', t0, t1, draw(ctx, t, E) {
+    var MODS = {
+      kind: 'full', t0, t1,
+      prep(E) { E.preload('r08', 4.2); E.preload('m1', 0); E.preload('m2', .8); E.preload('m3', 0); E.preload('anchor', anchorV(t0)); },
+      draw(ctx, t, E) {
         D.bg(ctx, t);
-        let a = ease.out(prog(t, t0, t0 + .35)) * (1 - prog(t, t1 - .22, t1));
+        let a = 1;
         const k = ease.inOut(prog(t, tX, tX + .75));
-        const base = E.video('r08', 4.2, 0), mv = NAMES.map((n, i) => E.video(n, (t - t0 + [0, .8, 0][i]) % MOD[n].len, 1));
+        const base = E.video('r08', 4.2, 0), mv = NAMES.map((n, i) => E.video(n, Math.min(t - t0 + [0, .8, 0][i], MOD[n].len - .1), 1));
         ctx.save(); ctx.globalAlpha = a;
         const g = D.recFull(ctx, t, base, 1992, 1440, { layers: NAMES.map((n, i) => ({ el: mv[i], r: MOD[n].r })) });
         if (k > 0 && base) {
@@ -653,11 +677,12 @@
         ctx.restore();
         pip(ctx, t, E, t0, t1);
       },
-    });
+    };
+    scenes.push(MODS);
   }
 
   // 24  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
-  scenes.push(anchorFull(T(107.40), T(109.80), { close: true }));
+  scenes.push(anchorFull(T(107.40), T(109.80), { close: true, xfrom: MODS }));   // 阿亮 10-21：三个模块 → 真人直接叠化，不闪
 
   // 25  111.37–115.47 「还能沉淀成个人专属Skill，后续可以一键复用」沉淀技能录屏：贴入指令 → 软切到「已成功创建并注册」（推近描）→ 软切到我的技能 → 使用 → 输入框出现模板（框）
   {
@@ -758,7 +783,7 @@
           ctx.restore();
         }
         stepRow(ctx, t, AT, { cx: 1130, cw: 330, gap: 86 });
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
@@ -825,7 +850,7 @@
             ctx.restore();
           }
         });
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
@@ -844,7 +869,9 @@
   /* ---------- 字幕叠加 ---------- */
   // 阿亮 10-21：字幕不要标点；顿号「、」换成空格
   const clean = s => s.replace(/、/g, ' ').replace(/[，。！？：；「」“”‘’（）《》…,.!?:;"()]/g, '').replace(/\s+/g, ' ').trim();
+  const DIPS = [29.85, 31.05, SEG3, 67.65, SEG4, 93.20];   // 章节卡进出：纯黑闪一下
   function overlay(ctx, t) {
+    for (const d of DIPS) { const a = 1 - Math.abs(t - d) / .2; if (a > 0) { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, 1920, 1080); } }
     for (const [a, b, s] of SUBS) if (t >= a && t < b) { D.subtitle(ctx, clean(s), 1); break; }
   }
 

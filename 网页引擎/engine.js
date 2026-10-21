@@ -27,7 +27,7 @@
   class KEngine {
     constructor(root, P) {
       this.P = P; this.W = P.width || 1920; this.H = P.height || 1080;
-      this.t = 0; this.playing = false; this.dirty = true; this.want = new Map(); this.rate = new Map();
+      this.t = 0; this.playing = false; this.dirty = true; this.want = new Map(); this.rate = new Map(); this.pre = new Map(); this.snapC = {}; this.lastWant = new Map();
       this.img = {}; this.vid = {}; this.buf = {}; this.cache = {};
       this.util = { clamp, lerp, prog, ease };
       this._ui(root);
@@ -78,7 +78,20 @@
       const v = this.vid[name]; if (!v) return null;
       srcT = Math.max(0, Math.min(srcT, (v.duration || 1e9) - 0.04));
       this.want.set(name, srcT); this.rate.set(name, rate);
-      return v.readyState >= 2 ? v : null;
+      if (v.readyState >= 2 && !v.seeking) return v;
+      return this.snapC[name] || null;   // 跳转中：用跳转前最后一帧顶上，不闪黑
+    }
+    /** 提前把下一个场景要用的视频跳到起点（暂停着），换画面时不用现找 */
+    preload(name, srcT) {
+      const v = this.vid[name]; if (!v || this.want.has(name)) return;
+      this.pre.set(name, Math.max(0, Math.min(srcT, (v.duration || 1e9) - 0.04)));
+    }
+    /** 跳转前把当前画面存一张，跳转期间拿它顶上 */
+    _snap(name, v) {
+      if (v.readyState < 2 || !v.videoWidth) return;
+      let c = this.snapC[name]; if (!c) c = this.snapC[name] = document.createElement('canvas');
+      if (c.width !== v.videoWidth || c.height !== v.videoHeight) { c.width = v.videoWidth; c.height = v.videoHeight; }
+      try { c.getContext('2d').drawImage(v, 0, 0); } catch (e) {}
     }
     image(name) { return this.img[name] || null; }
     /** 把黑色 logo 之类染成纯色（缓存） */
@@ -103,26 +116,39 @@
     }
     render(t) {
       const ctx = this.ctx, P = this.P;
-      this.want.clear(); this.rate.clear();
+      this.want.clear(); this.rate.clear(); this.pre.clear();
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
       ctx.fillStyle = '#07070c'; ctx.fillRect(0, 0, this.W, this.H);
       for (const s of P.scenes) {
         if (t >= s.t0 && t < s.t1) { ctx.save(); try { s.draw(ctx, t, this, s); } catch (e) { console.error(e); } ctx.restore(); }
       }
-      if (P.overlay && !this.noOverlay) { ctx.save(); P.overlay(ctx, t, this); ctx.restore(); }   // noOverlay：导出剪映用的画面不带字幕
+      if (P.overlay && !this.noOverlay) { ctx.save(); P.overlay(ctx, t, this); ctx.restore(); }
+      for (const s of P.scenes) if (s.prep && s.t0 > t && s.t0 - t < 1.5) { try { s.prep(this); } catch (e) {} }   // noOverlay：导出剪映用的画面不带字幕
     }
     _syncVideos() {
+      const now = this._clock();
       for (const [k, v] of Object.entries(this.vid)) {
         const want = this.want.get(k);
-        if (want === undefined) { if (!v.paused) v.pause(); continue; }
-        const r = this.rate.get(k) ?? 1;
+        if (want === undefined) {   // 这一刻用不到：暂停；下一个场景要用的话先跳到起点
+          if (!v.paused) v.pause();
+          const p = this.pre.get(k);
+          if (p !== undefined && !v.seeking && Math.abs(v.currentTime - p) > .04) v.currentTime = p;
+          this.lastWant.delete(k); continue;
+        }
+        const r = this.rate.get(k) ?? 1, lw = this.lastWant.get(k);
+        this.lastWant.set(k, [want, now]);
         if (this.playing && !this._exact && r > 0) {
-          if (Math.abs(v.playbackRate - r) > 1e-3) v.playbackRate = r;     // 快放用播放速度，不靠反复跳帧追
-          if (v.paused) { v.currentTime = want; v.play().catch(() => {}); }
-          else if (Math.abs(v.currentTime - want) > 0.25 && !v.seeking) v.currentTime = want;
+          if (v.paused) {
+            if (Math.abs(v.currentTime - want) > .04 && !v.seeking) { this._snap(k, v); v.currentTime = want; }
+            v.playbackRate = r; v.play().catch(() => {}); continue;
+          }
+          // 剪辑点（期望时间不连续）或偏差太大才跳；平时用播放速度慢慢追，避免一跳一卡
+          const jump = lw ? Math.abs(want - (lw[0] + (now - lw[1]) * r)) : 0, drift = want - v.currentTime;
+          if ((jump > .12 || Math.abs(drift) > .6) && !v.seeking) { this._snap(k, v); v.currentTime = want; v.playbackRate = r; }
+          else { const nr = r * (1 + clamp(drift * .8, -.12, .12)); if (Math.abs(v.playbackRate - nr) > .005) v.playbackRate = nr; }
         } else {
           if (!v.paused) v.pause();
-          if (Math.abs(v.currentTime - want) > 0.017 && !v.seeking) v.currentTime = want;
+          if (Math.abs(v.currentTime - want) > 0.017 && !v.seeking) { this._snap(k, v); v.currentTime = want; }
         }
       }
     }
