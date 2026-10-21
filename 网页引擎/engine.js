@@ -27,7 +27,7 @@
   class KEngine {
     constructor(root, P) {
       this.P = P; this.W = P.width || 1920; this.H = P.height || 1080;
-      this.t = 0; this.playing = false; this.dirty = true; this.want = new Map();
+      this.t = 0; this.playing = false; this.dirty = true; this.want = new Map(); this.rate = new Map();
       this.img = {}; this.vid = {}; this.buf = {}; this.cache = {};
       this.util = { clamp, lerp, prog, ease };
       this._ui(root);
@@ -73,10 +73,11 @@
     }
 
     /* ---------- 画面函数里用的 ---------- */
-    video(name, srcT) {
+    /** rate：这一刻素材的播放速度（1 原速，1.3 快放，0 定格）。定格时视频暂停在准确的那一帧，不会来回跳 */
+    video(name, srcT, rate = 1) {
       const v = this.vid[name]; if (!v) return null;
       srcT = Math.max(0, Math.min(srcT, (v.duration || 1e9) - 0.04));
-      this.want.set(name, srcT);
+      this.want.set(name, srcT); this.rate.set(name, rate);
       return v.readyState >= 2 ? v : null;
     }
     image(name) { return this.img[name] || null; }
@@ -102,7 +103,7 @@
     }
     render(t) {
       const ctx = this.ctx, P = this.P;
-      this.want.clear();
+      this.want.clear(); this.rate.clear();
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
       ctx.fillStyle = '#07070c'; ctx.fillRect(0, 0, this.W, this.H);
       for (const s of P.scenes) {
@@ -114,7 +115,9 @@
       for (const [k, v] of Object.entries(this.vid)) {
         const want = this.want.get(k);
         if (want === undefined) { if (!v.paused) v.pause(); continue; }
-        if (this.playing && !this._exact) {
+        const r = this.rate.get(k) ?? 1;
+        if (this.playing && !this._exact && r > 0) {
+          if (Math.abs(v.playbackRate - r) > 1e-3) v.playbackRate = r;     // 快放用播放速度，不靠反复跳帧追
           if (v.paused) { v.currentTime = want; v.play().catch(() => {}); }
           else if (Math.abs(v.currentTime - want) > 0.25 && !v.seeking) v.currentTime = want;
         } else {
@@ -361,12 +364,12 @@
       const vw = iw / z, vh = ih / z;
       return { cx: clamp((r[0] + r[2]) / 2, vw / 2, iw - vw / 2), cy: clamp((r[1] + r[3]) / 2, vh / 2, ih - vh / 2), z };
     },
-    /** 镜头在 t 时的状态：cam = [[时间, 区域或 null], ...]，每次推拉用 dur 秒（缓动） */
+    /** 镜头在 t 时的状态：cam = [[时间, 区域或 null, 秒数?], ...]，默认每次推拉用 dur 秒（缓动） */
     camAt(cam, t, iw, ih, dur = .7) {
       let cur = D.camOf(null, iw, ih);
       for (let i = 0; i < (cam || []).length; i++) {
-        const [ta, r] = cam[i]; if (t < ta) break;
-        const nxt = D.camOf(r, iw, ih), k = ease.inOut(prog(t, ta, ta + dur));
+        const [ta, r, d] = cam[i]; if (t < ta) break;      // 第三项：这一次推拉用几秒；0 = 直接到位（软切时用）
+        const dd = d == null ? dur : d, nxt = D.camOf(r, iw, ih), k = dd <= 0 ? 1 : ease.inOut(prog(t, ta, ta + dd));
         cur = { cx: lerp(cur.cx, nxt.cx, k), cy: lerp(cur.cy, nxt.cy, k), z: Math.exp(lerp(Math.log(cur.z), Math.log(nxt.z), k)) };
       }
       return cur;

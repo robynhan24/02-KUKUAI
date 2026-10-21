@@ -83,12 +83,19 @@
   const ANCHOR_W = 854, ANCHOR_H = 480;
   const PIP = { x: 160, y: 920, d: 230 };       // 左下角，避开内容和字幕
   /** 成片时间 → 主播视频时间（停顿里继续往下走） */
+  // 停顿里真人画面也看得见的地方：慢放「说完这句 → 下一句开口」之间那一小段，不露出没声音的口型，也不往回跳
+  const SLOW = [[18.87, 19.87, 19.50, 19.68]];
   function anchorV(t) {
+    for (const [a, b, v0, v1] of SLOW) if (t >= a && t < b) return v0 + (t - a) * (v1 - v0) / (b - a);
     let v = V(t);
     if (v == null) { for (const [a, , t0] of VOICE) if (t >= t0) v = a + (t - t0); }
     return v;
   }
-  function anchorEl(E, t) { const v = anchorV(t); return v == null ? null : E.video('anchor', v); }
+  function anchorEl(E, t) {
+    const v = anchorV(t); if (v == null) return null;
+    const sl = SLOW.find(([a, b]) => t >= a && t < b);
+    return E.video('anchor', v, sl ? (sl[3] - sl[2]) / (sl[1] - sl[0]) : 1);
+  }
   /** 主播头部位置 [中心 x, 头顶 y]（anchor_track.js，每秒一个点，中间插值） */
   function head(v) {
     const H = window.ANCHOR_TRACK; if (!H || v == null) return [400, 55];
@@ -124,8 +131,38 @@
         const z = lerp(1.03, 1, kin);
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
         ctx.drawImage(el, g.x, g.y, g.w, g.h); ctx.restore();
+        if (o.extra) o.extra(ctx, t, E);
       },
     };
+  }
+  /** 库库AI logo 直接出现在真人画面的空白处（阿亮 10-20：不单独开一个画面） */
+  function logoOn(ctx, t, E, ta, tEnd, o = {}) {
+    if (t < ta || t >= tEnd) return;
+    const cx = o.cx || 1580, cy = o.cy || 300, W = o.w || 540;
+    const k = prog(t, ta, ta + .22), s = lerp(1.7, 1, ease.out(k)) + Math.sin(prog(t, ta + .22, ta + .5) * Math.PI) * .04;
+    const a = clamp(k * 3) * (1 - prog(t, tEnd - .3, tEnd)), logo = E.tint('logo', '#ffffff'); if (!logo) return;
+    ctx.save(); ctx.globalAlpha = a;
+    const ring = prog(t, ta + .18, ta + .8);
+    if (ring > 0 && ring < 1) { ctx.strokeStyle = `rgba(245,223,39,${.7 * (1 - ring)})`; ctx.lineWidth = 8 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(cx, cy, W * .3 + ring * W * .5, 0, Math.PI * 2); ctx.stroke(); }
+    const w = W * s, h = w * 249 / 960;
+    ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 30; ctx.drawImage(logo, cx - w / 2, cy - h / 2, w, h);
+    ctx.shadowColor = 'rgba(139,92,246,.95)'; ctx.shadowBlur = 40; ctx.drawImage(logo, cx - w / 2, cy - h / 2, w, h);
+    const sw = prog(t, ta + .35, ta + .85);
+    if (sw > 0 && sw < 1) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.shadowBlur = 0;
+      const gx = lerp(cx - w / 2 - 120, cx + w / 2 + 120, sw), g = ctx.createLinearGradient(gx - 80, 0, gx + 80, 0);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, 'rgba(255,255,255,.3)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(cx - w / 2, cy - h / 2, w, h); ctx.globalCompositeOperation = 'source-over';
+    }
+    if (o.band != null) {   // 三色光带（一站式）
+      const u = ease.out(prog(t, o.band, o.band + .5));
+      if (u > 0) {
+        const bw = W * .95 * u, gr = ctx.createLinearGradient(cx - W * .475, 0, cx + W * .475, 0);
+        gr.addColorStop(0, '#2388FF'); gr.addColorStop(.5, '#F5DF27'); gr.addColorStop(1, '#39C872');
+        ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 18; ctx.fillStyle = gr; D.rr(ctx, cx - W * .475, cy + h / 2 + 26, bw, 12, 6); ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   /* ---------- 场景 ---------- */
@@ -138,6 +175,7 @@
    *  o.xin / o.xout 进出场过渡（换素材时用），o.cuts 同一录屏里跳一段时的软切（快速淡出淡入） */
   function fullScene(t0, t1, o) {
     const srcAt = t => { let v = 0; for (const [ta, s0, r] of o.src) if (t >= ta - 1e-6) v = s0 + (t - ta) * r; return v; };
+    const rateAt = t => { let v = 1; for (const [ta, , r] of o.src) if (t >= ta - 1e-6) v = r; return v; };
     const xin = o.xin == null ? .35 : o.xin, xout = o.xout == null ? .22 : o.xout;
     return {
       kind: 'full', t0, t1, o, draw(ctx, t, E) {
@@ -146,7 +184,7 @@
         if (xin > 0 && t < t0 + xin) { const k = ease.out(prog(t, t0, t0 + xin)); a = k; z = lerp(1.05, 1, k); }
         if (xout > 0 && t > t1 - xout) { const k = prog(t, t1 - xout, t1); a = Math.min(a, 1 - k); z = lerp(1, 1.03, k); }
         for (const c of o.cuts || []) { const d = Math.abs(t - c); if (d < .16) a = Math.min(a, d / .16); }
-        const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t));
+        const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t), rateAt(t));
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
         if (o.ih > o.iw) D.rec(ctx, t, el, o.iw, o.ih, {});          // 竖屏手机：外框 + 虚化铺底
         else D.recFull(ctx, t, el, o.iw, o.ih, { cam: o.cam, marks: o.marks });
@@ -166,125 +204,120 @@
   }
   // 3D 课件（1992×1440）三个模块的区域
   const M1 = [160, 620, 720, 1180], M2 = [715, 620, 1265, 1180], M3 = [1270, 620, 1830, 1180];
+  const M12 = [150, 610, 1275, 1190];   // 01 + 02 两个模块一起（阿亮 10-20：放大适中，两个动效同时看得到）
 
   /* ================= 第 1 段：开头 ================= */
 
   // ① 0–4.93 「来，老师、科研党们，都看过来！你看AI制作的这个3D高数课件，能拖、能转」
-  //    开头直接全屏 3D 交互课件高光：全画面 → 推到拖动的曲面（能拖）→ 移到旋转的切平面（能转）
+  //    开头直接全屏 3D 交互课件高光：全画面 → 推近到 01、02 两个模块（拖曲面、转切平面同时看得到）
   scenes.push(fullScene(0, 4.93, {
     asset: 'r08', iw: 1992, ih: 1440, xin: 0, src: [[0, .2, 1.3]],
-    cam: [[0, null], [1.6, M1], [3.85, M2]],
+    cam: [[0, null], [1.3, M12, 1.0]],
   }));
 
-  // ② 4.93–8.17 「还配了一份文献出处标得清清楚楚的教研报告」报告录屏翻到参考文献 → 推近，逐条马克笔
+  // ② 4.93–8.17 「还配了一份文献出处标得清清楚楚的教研报告」报告录屏慢慢上滑一小段到参考文献 → 定格，轻推近，框出整组核心论据
   scenes.push(fullScene(4.93, 8.17, {
-    asset: 'r03', iw: 2560, ih: 1440, src: [[4.93, 14.4, 1], [6.03, 15.5, 0]],
-    cam: [[4.93, null], [6.0, [520, 320, 2480, 880]]],
-    marks: [[548, 360, 728, 404, 6.6], [550, 556, 1840, 600, T(6.55)], [550, 616, 1916, 655, T(6.80)], [550, 675, 1604, 714, T(7.05)], [550, 735, 1896, 774, T(7.30)], [550, 794, 2045, 833, T(7.55)]]
-      .map(([a, b, c, d, at]) => ({ r: [a, b, c, d], at: Math.max(at, 6.7), kind: 'hl' })),
+    asset: 'r03', iw: 2560, ih: 1440, src: [[4.93, 15.0, .45], [4.93 + 1.11, 15.5, 0]],
+    cam: [[4.93, null], [6.1, [520, 330, 2480, 1120], .8]],
+    marks: [{ r: [540, 545, 2465, 1118], at: T(6.55), kind: 'box' }],
   }));
 
   // ③ 8.17–11.99 「前阵子有位老师在评论区吐槽，他在做一个高数教研专题」真人
   scenes.push(anchorFull(8.17, 11.99));
 
-  // ④ 11.99–16.11 「但文献怎么理都理不顺，3D课件呢更是无从下手」文献截图乱飞 + 红笔 → 交叉淡化成空坐标轴 + 问号
-  //   （原 ⑤） 「但文献怎么理都理不顺」一堆文献截图乱飞 + 红笔乱线
+  // ④ 11.99–16.11 「但文献怎么理都理不顺，3D课件呢更是无从下手」
+  //   「理都理不顺」：四张高数公式图浮在空中，之间的连线越连越乱、互相缠绕，卡片换位后线绞成一团（10-20 换掉红笔乱线）
   {
-    const t0 = 11.99, t1 = 14.07;
-    const CARDS = [ // 图, 中心x, 中心y, 角度, 进场延迟
-      ['lit1', 760, 420, -.10, 0], ['lit3', 1180, 520, .08, .18], ['lit2', 820, 640, .06, .36], ['lit4', 1220, 380, -.07, .52],
-    ];
-    let scrib = null;
+    const t0 = 11.99, t1 = 14.07, tK = T(13.85);
+    const HOME = [[640, 330, -.05], [1290, 300, .04], [610, 700, .05], [1300, 720, -.04]];
+    const SWAP = [3, 2, 1, 0];   // 「理不顺」那一下：对角换位，线跟着拧成一团
+    // 连线：从卡片 i 的某个点连到卡片 j 的某个点（点用卡片内的相对位置）
+    const LINKS = [[0, 3, [.9, .7], [.1, .2], '#2388FF'], [1, 2, [.1, .8], [.9, .2], '#8b5cf6'], [0, 1, [.8, .9], [.2, .9], '#F5DF27'],
+                   [2, 3, [.8, .1], [.2, .9], '#39C872'], [0, 2, [.95, .4], [.95, .6], '#8b5cf6'], [1, 3, [.05, .5], [.05, .4], '#2388FF'], [3, 0, [.5, .05], [.5, .95], '#F5DF27']];
+    const CW = 600, CH = CW * 941 / 1672;
     var S5 = ({
       t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c1: 'rgba(233,66,84,.22)' });
-        const shake = Math.sin(t * 41) * 3;
-        for (const [n, cx, cy, ang, dl] of CARDS) {
-          const k = ease.back(prog(t, t0 + dl, t0 + dl + .3)); if (k <= 0) continue;
-          ctx.save(); ctx.translate(cx + (1 - k) * (cx > 960 ? 700 : -700) + shake, cy); ctx.rotate(ang * k + Math.sin(t * 3 + cx) * .01);
-          const w = 980, h = w * 1440 / 2560;
-          ctx.globalAlpha = clamp(k * 1.2);
-          D.win(ctx, E.image(n), [0, 0, 2560, 1440], -w / 2, -h / 2, w, h, { r: 18 });
+        D.bg(ctx, t);
+        const sw = ease.inOut(prog(t, tK - .1, tK + .55));
+        const pos = HOME.map(([x, y, r], i) => {
+          const [X, Y, R] = HOME[SWAP[i]], dl = i * .14, k = ease.out(prog(t, t0 + dl, t0 + dl + .45));
+          const fx = Math.sin(t * 1.3 + i * 1.7) * 10, fy = Math.cos(t * 1.1 + i) * 8;
+          // 换位时走弧线，不是直线滑过去
+          const arc = Math.sin(sw * Math.PI) * (i % 2 ? -140 : 140);
+          return { x: lerp(x, X, sw) + fx + (1 - k) * (x < 960 ? -520 : 520), y: lerp(y, Y, sw) + fy + arc * (i < 2 ? 1 : -1) * .5, r: lerp(r, R, sw) + (1 - k) * (x < 960 ? -.2 : .2), k };
+        });
+        const pt = (i, [u, v]) => { const P = pos[i], dx = (u - .5) * CW, dy = (v - .5) * CH; return [P.x + dx * Math.cos(P.r) - dy * Math.sin(P.r), P.y + dx * Math.sin(P.r) + dy * Math.cos(P.r)]; };
+        // 卡片
+        pos.forEach((P, i) => {
+          if (P.k <= 0) return;
+          ctx.save(); ctx.globalAlpha = clamp(P.k * 1.4); ctx.translate(P.x, P.y); ctx.rotate(P.r);
+          ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
+          D.rr(ctx, -CW / 2, -CH / 2, CW, CH, 14); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'transparent';
+          const im = E.image('gs' + (i + 1)); if (im) { ctx.save(); D.rr(ctx, -CW / 2, -CH / 2, CW, CH, 14); ctx.clip(); ctx.drawImage(im, -CW / 2, -CH / 2, CW, CH); ctx.restore(); }
           ctx.restore();
+        });
+        // 连线：一根根画出来，弯来弯去互相交叉；换位后拧成一团、带一点红
+        const knot = sw, red = ease.out(prog(t, tK + .3, tK + .8));
+        LINKS.forEach(([i, j, pa, pb, col], n) => {
+          const p = ease.inOut(prog(t, t0 + .75 + n * .13, t0 + 1.25 + n * .13)); if (p <= 0) return;
+          const A = pt(i, pa), B = pt(j, pb), w1 = Math.sin(t * 2.1 + n * 1.9), w2 = Math.cos(t * 1.7 + n * 2.3);
+          const C1 = [lerp(A[0] + (B[1] - A[1]) * .55 * w1, 960 + 160 * Math.cos(n * 2.4), knot), lerp(A[1] - (B[0] - A[0]) * .35 * w2, 510 + 110 * Math.sin(n * 2.4), knot)];
+          const C2 = [lerp(B[0] - (B[1] - A[1]) * .5 * w2, 960 - 160 * Math.cos(n * 1.7), knot), lerp(B[1] + (B[0] - A[0]) * .3 * w1, 510 - 110 * Math.sin(n * 1.7), knot)];
+          ctx.save(); ctx.lineCap = 'round';
+          const N = 48, m = Math.max(2, Math.round(N * p));
+          ctx.beginPath();
+          for (let q = 0; q <= m; q++) { const u = q / N, iu = 1 - u;
+            const x = iu * iu * iu * A[0] + 3 * iu * iu * u * C1[0] + 3 * iu * u * u * C2[0] + u * u * u * B[0];
+            const y = iu * iu * iu * A[1] + 3 * iu * iu * u * C1[1] + 3 * iu * u * u * C2[1] + u * u * u * B[1];
+            q ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+          ctx.strokeStyle = red > 0 && n % 2 ? `rgba(255,77,94,${.55 + .4 * red})` : col; ctx.globalAlpha = .9;
+          ctx.lineWidth = 4; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 14; ctx.stroke();
+          // 两端的小圆点
+          ctx.shadowBlur = 10; ctx.fillStyle = '#fff';
+          for (const P of [A, ...(p >= 1 ? [B] : [])]) { ctx.beginPath(); ctx.arc(P[0], P[1], 7, 0, Math.PI * 2); ctx.fill(); }
+          ctx.restore();
+        });
+        // 绞成一团的中心：一圈淡红色脉冲
+        if (red > 0) {
+          const pr = (t - tK - .3) * 1.6 % 1;
+          ctx.save(); ctx.globalAlpha = red * (1 - pr) * .8; ctx.strokeStyle = '#ff4d5e'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(960, 510, 60 + pr * 140, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         }
-        // 「理不顺」：红笔乱线
-        if (!scrib) { scrib = []; for (let i = 0; i <= 140; i++) { const a = i * .2; scrib.push([960 + 430 * Math.sin(a * 1.7) * Math.cos(a * .31), 500 + 240 * Math.sin(a * 2.3 + 1) * Math.cos(a * .17)]); } }
-        const p = prog(t, T(13.85), T(14.45));
-        if (p > 0) {
-          ctx.save(); ctx.strokeStyle = '#ff3b4e'; ctx.lineWidth = 12; ctx.lineCap = ctx.lineJoin = 'round';
-          ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12; ctx.beginPath();
-          const n = Math.max(2, Math.floor(scrib.length * p));
-          ctx.moveTo(...scrib[0]); for (let i = 1; i < n; i++) ctx.lineTo(...scrib[i]); ctx.stroke(); ctx.restore();
-        }
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
 
-  //   （原 ⑥） 「3D课件呢更是无从下手」空空的三维坐标系 + 大问号
+  //   「3D课件呢更是无从下手」：抠掉背景的 3D 空镜（10 3D空镜）浮在网格上 + 问号
   {
-    const t0 = 14.07, t1 = 16.11;
+    const t0 = 14.07, t1 = 16.11, NF = 68;
     var S6 = ({
       t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c1: 'rgba(57,200,114,.18)' });
-        // 课件的影子：压暗、去色
-        const ghost = E.image('c08still');
-        if (ghost) { ctx.save(); ctx.globalAlpha = .12; ctx.filter = 'grayscale(1) blur(3px)'; ctx.drawImage(ghost, 0, 0, 1992, 1440, 360, 90, 1200, 867); ctx.restore(); }
-        // 空坐标轴：三根轴慢慢转
-        const k = ease.out(prog(t, t0, t0 + .5)), rot = (t - t0) * .5 + .6, O = [760, 610];
-        const P3 = (x, y, z) => [O[0] + (x * Math.cos(rot) - y * Math.sin(rot)) * 300, O[1] - z * 300 + (x * Math.sin(rot) + y * Math.cos(rot)) * 110];
-        ctx.save(); ctx.lineWidth = 8; ctx.lineCap = 'round';
-        for (const [v, c] of [[[1.2, 0, 0], '#2388ff'], [[0, 1.2, 0], '#39c872'], [[0, 0, 1.15], '#f5df27']]) {
-          const e = P3(...v.map(q => q * k)); ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(...O); ctx.lineTo(...e); ctx.stroke();
-        }
-        ctx.setLineDash([14, 16]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.35)';
-        for (let i = -1; i <= 1; i += .5) { ctx.beginPath(); ctx.moveTo(...P3(-1, i, 0)); ctx.lineTo(...P3(1, i, 0)); ctx.stroke(); ctx.beginPath(); ctx.moveTo(...P3(i, -1, 0)); ctx.lineTo(...P3(i, 1, 0)); ctx.stroke(); }
-        ctx.restore();
-        // 「无从下手」：大问号弹出
+        D.bg(ctx, t);
+        const f = clamp(Math.floor((t - t0 + .3) * 20 * 1.15), 0, NF - 1), im = E.image('k3d' + f);
+        const k = ease.out(prog(t, t0, t0 + .5)), w = 1180 * lerp(.92, 1, k), h = w * 641 / 900;
+        const x = 900 - w / 2, y = 500 - h / 2 + Math.sin(t * 1.4) * 6;
+        // 地面上的柔和投影
+        ctx.save(); ctx.globalAlpha = .45 * k; const sh = ctx.createRadialGradient(900, y + h - 10, 20, 900, y + h - 10, w * .45);
+        sh.addColorStop(0, 'rgba(0,0,0,.8)'); sh.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = sh;
+        ctx.save(); ctx.translate(900, y + h - 10); ctx.scale(1, .16); ctx.translate(-900, -(y + h - 10)); ctx.fillRect(900 - w * .5, y + h - 10 - w * .5, w, w); ctx.restore(); ctx.restore();
+        if (im) { ctx.save(); ctx.globalAlpha = clamp(k * 1.3); ctx.drawImage(im, x, y, w, h); ctx.restore(); }
+        // 「无从下手」：问号弹出
         const q = ease.back(prog(t, T(15.55), T(15.55) + .35));
-        if (q > 0) { ctx.save(); ctx.translate(1330, 470); ctx.scale(q, q); ctx.rotate(Math.sin(t * 6) * .05); D.text(ctx, '？', 0, 0, { size: 420, color: '#f5df27', stroke: '#111', strokeW: 18 }); ctx.restore(); }
-        pip(ctx, t, E, t0 + .05, t1);
+        if (q > 0) { ctx.save(); ctx.translate(1560, 360); ctx.scale(q, q); ctx.rotate(Math.sin(t * 5) * .05); D.text(ctx, '？', 0, 0, { size: 300, color: '#f5df27', stroke: '#111', strokeW: 16 }); ctx.restore(); }
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
 
   scenes.push(blend(S5, S6));
 
-  // ⑤ 16.11–18.87 「哎，底下有网友就推荐了一个叫库库AI的工具」真人近景
-  scenes.push(anchorFull(16.11, 18.87, { close: true }));
-
-  // ⑥ 18.87–19.95 停顿：库库AI logo 单独出场（重击同帧）
-  {
-    const t0 = 18.87, t1 = 19.95;
-    scenes.push({
-      t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c1: 'rgba(124,58,237,.55)', c2: 'rgba(185,255,0,.18)' });
-        const k = prog(t, t0, t0 + .22), s = lerp(2.4, 1, ease.out(k)) + Math.sin(prog(t, t0 + .22, t0 + .5) * Math.PI) * .04;
-        // 光环
-        const ring = prog(t, t0 + .2, t0 + .9);
-        if (ring > 0 && ring < 1) { ctx.save(); ctx.strokeStyle = `rgba(245,223,39,${.8 * (1 - ring)})`; ctx.lineWidth = 14 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(960, 540, 220 + ring * 700, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
-        const logo = E.tint('logo', '#ffffff'); if (!logo) return;
-        const w = 1200 * s, h = w * 249 / 960;
-        ctx.save(); ctx.globalAlpha = clamp(k * 3) * (1 - prog(t, t1 - .1, t1));
-        ctx.shadowColor = 'rgba(139,92,246,.9)'; ctx.shadowBlur = 60;
-        ctx.drawImage(logo, 960 - w / 2, 540 - h / 2, w, h);
-        ctx.restore();
-        // 扫光
-        const sw = prog(t, t0 + .35, t0 + .85);
-        if (sw > 0 && sw < 1) {
-          ctx.save(); ctx.globalCompositeOperation = 'lighter';
-          const gx = lerp(960 - w / 2 - 200, 960 + w / 2 + 200, sw), g = ctx.createLinearGradient(gx - 120, 0, gx + 120, 0);
-          g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(.5, 'rgba(255,255,255,.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-          ctx.fillStyle = g; ctx.fillRect(960 - w / 2, 540 - h / 2, w, h); ctx.restore();
-        }
-        // 重击白闪
-        const fl = 1 - prog(t, t0 + .2, t0 + .4); if (k >= 1 && fl > 0) { ctx.fillStyle = `rgba(255,255,255,${.5 * fl})`; ctx.fillRect(0, 0, 1920, 1080); }
-      },
-    });
-  }
+  // ⑤ 16.11–19.95 「哎，底下有网友就推荐了一个叫库库AI的工具」真人近景；停顿里库库AI logo 直接出现在右边空白处（重击同帧），真人慢放
+  const LOGO1 = 18.87 + .2;
+  scenes.push(anchorFull(16.11, 19.95, { close: true, extra: (ctx, t, E) => logoOn(ctx, t, E, LOGO1, 21.3) }));
 
   // ⑦ 19.95–25.69 「我拿来一试，还真能一条龙跑下来。那今天我就手把手带你做一个完整的教研专题」真人（不再快切）
-  scenes.push(anchorFull(19.95, 25.69));
+  scenes.push(anchorFull(19.95, 25.69, { extra: (ctx, t, E) => logoOn(ctx, t, E, LOGO1, 21.3) }));
 
   // ⑧ 25.69–27.81 「从查文献到出课件」章节导航（秋芝-豆包式编号卡）
   const NAV = [['查文献', '#2388FF', T(25.80)], ['出报告', '#F5DF27', T(26.25)], ['做课件', '#39C872', T(26.65)]];
@@ -379,7 +412,7 @@
   const RP = [1420, 660, 2380, 1060], tRes = T(48.62);
   scenes.push(fullScene(45.47, T(53.55), {
     asset: 'r01', iw: 2560, ih: 1440, src: [[45.47, 4.0, 0], [tRes, 17.6, 1], [tRes + 3.4, 21.0, 0]], cuts: [tRes],
-    cam: [[45.47, PR], [tRes, null], [tRes + .4, [700, 560, 2500, 1100]], [tRes + 3.3, [1250, 620, 2420, 1100]]],
+    cam: [[45.47, PR], [tRes, [700, 560, 2500, 1100], 0], [tRes + 3.3, [1250, 620, 2420, 1100]]],   // 软切时直接到位，不先拉远再推近
     marks: [
       { r: [1745, 765, 2410, 815], at: T(46.39), end: tRes, dur: .5 }, { r: [608, 825, 670, 875], at: T(46.39) + .5, end: tRes },
       { r: [1840, 703, 1960, 747], at: tRes + 3.9, kind: 'box' }, { r: [1982, 703, 2052, 747], at: tRes + 4.15, kind: 'box' },
@@ -402,7 +435,7 @@
     const t0 = T(59.00), tS = T(63.20), tG = tS + 1.25;
     scenes.push(fullScene(t0, SEG3, {
       asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 11.0, 0]], cuts: [tS],
-      cam: [[t0, [520, 560, 2480, 730]], [tS, null], [tG, [520, 360, 2480, 540]]],
+      cam: [[t0, [520, 560, 2480, 730], 0], [tS, null, 0], [tG, [520, 360, 2480, 540]]],
       marks: [
         { r: [865, 605, 1025, 655], at: T(59.38), end: tS }, { r: [1105, 605, 1960, 655], at: T(60.30), dur: 1.0, end: tS },
         { r: [1308, 665, 1662, 715], at: T(62.40), end: tS, kind: 'box' },
@@ -426,7 +459,7 @@
     const t0 = T(69.30), tP = T(71.74);
     scenes.push(fullScene(t0, T(76.60), {
       asset: 'r03', iw: 2560, ih: 1440, src: [[t0, .4, 1], [tP, 6.0, 0]], cuts: [tP],
-      cam: [[t0, null], [t0 + .5, [520, 820, 1520, 1360]], [tP, [1135, 455, 2500, 800]]],
+      cam: [[t0, null], [t0 + .5, [520, 820, 1520, 1360]], [tP, [1135, 455, 2500, 800], 0]],
       marks: [
         { r: [2078, 490, 2460, 535], at: tP + .75 }, { r: [1160, 550, 1640, 595], at: tP + 1.0 },
         { r: [1160, 490, 1636, 535], at: T(72.95), dur: .5 }, { r: [1534, 668, 1880, 713], at: T(75.00), dur: .4 },
@@ -457,7 +490,7 @@
   // 21  93.20–96.62 「最后我们就能做出开头那个能拖能转的3D课件」3D 课件录屏：滑块转动切平面（原速），推近第二个模块
   scenes.push(fullScene(93.20, T(94.60), {
     asset: 'r08', iw: 1992, ih: 1440, src: [[93.20, 5.8, 1]],
-    cam: [[93.20, null], [94.0, M2]],
+    cam: [[93.20, null], [93.9, M12, 1.0]],
   }));
 
   // 22  96.62–102.87 「直接调用「离线互动科学仿真HTML生成」这个技能，让它生成配套的3D交互课件」
@@ -474,7 +507,7 @@
     const t0 = T(100.85);
     scenes.push(fullScene(t0, T(107.40), {
       asset: 'r08', iw: 1992, ih: 1440, src: [[t0, 0, 1.15]],
-      cam: [[t0, null], [T(104.32), M1], [t0 + 5.3, M2]],
+      cam: [[t0, null], [T(104.32), M12, 1.0]],
       marks: [[185, 640, 420, 680, T(101.29)], [740, 640, 1040, 680, T(101.45)], [1295, 640, 1590, 680, T(101.61)]]
         .map(([a, b, c, d, at]) => ({ r: [a, b, c, d], at, end: T(104.32), kind: 'box' })),
     }));
@@ -488,7 +521,7 @@
     const t0 = T(109.80), c1 = t0 + 1.1, c2 = T(112.16);
     scenes.push(fullScene(t0, T(114.22), {
       asset: 'r05', iw: 2560, ih: 1440, src: [[t0, 1.2, 1], [c1, 5.2, 0], [c2, 12.6, 1.15]], cuts: [c1, c2],
-      cam: [[t0, null], [c1, [500, 560, 1800, 900]], [c2, null]],
+      cam: [[t0, null], [c1, [500, 560, 1800, 900], 0], [c2, null, 0]],
       marks: [{ r: [552, 630, 1470, 680], at: c1 + .55, end: c2, dur: .5 }, { r: [600, 700, 870, 750], at: c2 + 1.35, kind: 'box' }],
     }));
   }
@@ -551,20 +584,19 @@
   // 29  128.10–129.70 「变化呢是肉眼可见」真人近景
   scenes.push(anchorFull(T(127.15), T(128.75), { close: true }));
 
-  // 30  129.70–136.15 「从文献整理，到专业的研究报告，再到立体交互式课件，库库AI一款工具就能一站式落地」
-  //     一个画面连贯完成：三张成果窗口随口播依次出现 → 收拢进库库AI → 三色光带（不再快切）
+  // 30  129.70–134.5 「从文献整理，到专业的研究报告，再到立体交互式课件」三张成果窗口随口播依次出现 → 收拢飞向右上角
   {
-    const t0 = T(128.75), t1 = T(135.20), tIn = T(133.16), tOne = T(134.06);
+    const t0 = T(128.75), tIn = T(133.16), t1 = tIn, tOne = T(134.06);
     const SHOTS = [['sort0', T(128.83), 0], ['rp_h1', T(129.79), 1], ['c08still', T(130.87), 2]];
     scenes.push({
       t0, t1, draw(ctx, t, E) {
         D.bg(ctx, t);
-        const g = ease.inOut(prog(t, tIn - .3, tIn + .15));
+        const g = ease.inOut(prog(t, tIn - .4, tIn));   // 收拢：飞向右上角（下一个画面 logo 出现的位置）
         const w = 560, h = 315, gap = 50, y = 300;
         SHOTS.forEach(([n, at, i]) => {
           const k = ease.back(prog(t, at, at + .4)); if (k <= 0) return;
-          const im = E.image(n), cx0 = 960 + (i - 1) * (w + gap), cx = lerp(cx0, 960, g), s = k * lerp(1, .3, g);
-          ctx.save(); ctx.translate(cx, y + h / 2 + (1 - k) * 60); ctx.scale(s, s); ctx.globalAlpha = clamp(k * 1.5) * (1 - g);
+          const im = E.image(n), cx0 = 960 + (i - 1) * (w + gap), cx = lerp(cx0, 1560, g), s = k * lerp(1, .2, g);
+          ctx.save(); ctx.translate(cx, lerp(y + h / 2, 330, g) + (1 - k) * 60); ctx.scale(s, s); ctx.globalAlpha = clamp(k * 1.5) * (1 - g);
           ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
           ctx.save(); D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.clip(); if (im) { const kk = Math.max(w / im.width, h / im.height); ctx.drawImage(im, -im.width * kk / 2, -h / 2, im.width * kk, im.height * kk); } ctx.restore();
           ctx.lineWidth = 6; ctx.strokeStyle = NAV[i][1]; D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.stroke();
@@ -573,26 +605,13 @@
           const b = ease.back(prog(t, at + .15, at + .5)) * (1 - g);
           if (b > 0) { ctx.save(); ctx.translate(cx, y + h + 80); ctx.scale(b, b); D.rr(ctx, -120, -44, 240, 88, 44); ctx.fillStyle = NAV[i][1]; ctx.fill(); D.text(ctx, NAV[i][0], 0, 4, { size: 56, color: i === 1 ? '#15151c' : '#fff', shadow: false }); ctx.restore(); }
         });
-        const k = prog(t, tIn, tIn + .22);
-        if (k > 0) {
-          const s = lerp(1.9, 1, ease.out(k)), logo = E.tint('logo', '#ffffff');
-          const ring = prog(t, tIn + .15, tIn + .85);
-          if (ring > 0 && ring < 1) { ctx.save(); ctx.strokeStyle = `rgba(185,255,0,${.8 * (1 - ring)})`; ctx.lineWidth = 14 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(960, 450, 200 + ring * 650, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
-          if (logo) { const lw = 1100 * s, lh = lw * 249 / 960; ctx.save(); ctx.globalAlpha = clamp(k * 3); ctx.shadowColor = 'rgba(139,92,246,.9)'; ctx.shadowBlur = 60; ctx.drawImage(logo, 960 - lw / 2, 450 - lh / 2, lw, lh); ctx.restore(); }
-          const u = ease.out(prog(t, tOne, tOne + .5));
-          if (u > 0) {
-            const W = 1000 * u, gr = ctx.createLinearGradient(460, 0, 1460, 0);
-            gr.addColorStop(0, '#2388FF'); gr.addColorStop(.5, '#F5DF27'); gr.addColorStop(1, '#39C872');
-            ctx.save(); ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 24; ctx.fillStyle = gr; D.rr(ctx, 460, 640, W, 16, 8); ctx.fill(); ctx.restore();
-          }
-        }
         pip(ctx, t, E, t0, t1);
       },
     });
   }
 
-  // 31  136.15–138.65 「这才是专业AI办公该有的样子」真人
-  scenes.push(anchorFull(T(135.20), T(137.70)));
+  // 31  134.5–138.65 「库库AI一款工具就能一站式落地。这才是专业AI办公该有的样子」真人；logo 直接出现在右边空白处 + 三色光带（不单独开画面）
+  scenes.push(anchorFull(T(133.16), T(137.70), { extra: (ctx, t, E) => logoOn(ctx, t, E, T(133.16) + .08, T(137.70), { cx: 1560, cy: 330, w: 560, band: T(134.06) }) }));
 
   // 46  138.65–141.25（10-20：左边网页端换成阿亮给的网页版截图） 「这个工具网页端和桌面端都能用」浏览器 + 桌面窗口，名字随口播弹出
   {
@@ -656,7 +675,7 @@
   audio.push({ asset: 'music5', at: SEG5 - .2, from: 0, dur: DUR - SEG5 + .2, gain: 1, fadeIn: .5, fadeOut: .8, env: env5 });
   const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
   // 转场：每次换画面一个轻「嗖」（峰值 0.7 秒对齐切点）；章节卡、logo 有自己的重击
-  const OWN = [18.87, CH1, 66.45, 92.0];   // logo、章节卡：有自己的蓄力 + 重击
+  const OWN = [CH1, 66.45, 92.0];   // logo、章节卡：有自己的蓄力 + 重击
   scenes.forEach((sc, i) => { if (i && !OWN.some(x => Math.abs(x - sc.t0) < .02)) sfx('swish', sc.t0 - .7, .28); });
   // 录屏里的马克笔 / 框选：马克笔沙沙声、框选轻「啵」；同一录屏里跳一段（软切）也给一个轻「嗖」
   scenes.filter(sc => sc.kind === 'full').forEach(sc => {
@@ -665,7 +684,7 @@
   });
   // 第 1 段动画
   sfx('pop', 12.02, .5); sfx('pop', 12.2, .45); sfx('pop', 12.37, .45); sfx('pop', 12.53, .45);
-  sfx('scribble', T(13.85), .55); sfx('pop', T(15.55), .7);
+  [0, 1, 2, 3].forEach(i => sfx('swish', 11.99 + i * .14 - .45, .22)); sfx('swish', T(13.85) - .45, .4); sfx('pop', T(15.55), .7);
   sfx('rise', 18.87 + .2 - 1.43, .7);                     // 蓄力，结尾对齐 logo
   sfx('thud', 18.87 - .17 + .2, .9); sfx('dong', 18.87 - .21 + .2, .55); sfx('shine', 19.25, .5);
   NAV.forEach(([, , ta]) => sfx('pop', ta, .55));
@@ -679,7 +698,7 @@
   sfx('pop', T(123.25), .5); sfx('swish', T(124.45) - .5, .3);
   [124.75, 125.29, 125.77].forEach(v => sfx('pop', T(v), .45));
   [128.83, 129.79, 130.87].forEach(v => sfx('pop', T(v) + .1, .45));
-  sfx('swish', T(133.16) - .6, .35); sfx('thud', T(133.16) - .17, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
+  sfx('thud', T(133.16) - .17 + .08, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
   sfx('pop', T(138.48), .5); sfx('pop', T(139.08), .5);
 
   /* ---------- 字幕叠加 ---------- */
@@ -693,13 +712,15 @@
     r01: { type: 'video', src: { mp4: A + 'r01.mp4', webm: A + 'r01.webm' } }, r02a: { type: 'video', src: { mp4: A + 'r02a.mp4', webm: A + 'r02a.webm' } }, r02b: { type: 'video', src: { mp4: A + 'r02b.mp4', webm: A + 'r02b.webm' } },
     r03: { type: 'video', src: { mp4: A + 'r03.mp4', webm: A + 'r03.webm' } }, r04: { type: 'video', src: { mp4: A + 'r04.mp4', webm: A + 'r04.webm' } }, r05: { type: 'video', src: { mp4: A + 'r05.mp4', webm: A + 'r05.webm' } },
     r08: { type: 'video', src: { mp4: A + 'r08.mp4', webm: A + 'r08.webm' } }, c07: { type: 'video', src: { mp4: A + 'c07.mp4', webm: A + 'c07.webm' } },
-    lit1: { type: 'image', src: A + 'lit1.jpg' }, lit2: { type: 'image', src: A + 'lit2.jpg' },
-    lit3: { type: 'image', src: A + 'lit3.jpg' }, lit4: { type: 'image', src: A + 'lit4.jpg' },
+    gs1: { type: 'image', src: A + 'gs1.jpg' }, gs2: { type: 'image', src: A + 'gs2.jpg' },
+    gs3: { type: 'image', src: A + 'gs3.jpg' }, gs4: { type: 'image', src: A + 'gs4.jpg' },
     sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
     k_home: { type: 'image', src: A + 'k_home.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
     logo: { type: 'image', src: A + 'logo.png' },
     voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' }, music5: { type: 'audio', src: A + 'music5.mp3' },
   };
+  // 抠好背景的 3D 空镜（key_3d.py，20 帧/秒）
+  for (let i = 0; i < 68; i++) assets['k3d' + i] = { type: 'image', src: A + `k3d/k3d_${String(i).padStart(3, '0')}.webp` };
   for (const n of ['whoosh', 'swish', 'rise', 'thud', 'dong', 'pop', 'shine', 'scribble']) assets[n] = { type: 'audio', src: A + `sfx_${n}.mp3` };
 
   window.PROJECT = {
