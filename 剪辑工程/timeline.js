@@ -338,7 +338,7 @@
   {
     const cut = T(31.30), RA = [560, 570, 1560, 800], RB = [590, 670, 1880, 900];
     scenes.push(recScene(31.05, 35.83, (t, E) => ({
-      el: t < cut ? E.video('c01', .25 + (t - 31.05) * 1.1) : E.image('prompt'), iw: 2560, ih: 1440,
+      el: t < cut ? E.video('c01', Math.min(3.3, 2.15 + (t - 31.05))) : E.image('prompt'), iw: 2560, ih: 1440,
       focus: [{
         at: 31.45, r: tt => lerpR(RA, RB, ease.inOut(prog(tt, cut, cut + .4))),
         marks: [{ r: [770, 705, 1850, 755], at: T(31.74), dur: .9 }, { r: [670, 825, 1160, 875], at: T(33.70), dur: .45 }],
