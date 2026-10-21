@@ -18,7 +18,5 @@ def make(font_path, out, idx=None):
     print(out, os.path.getsize(out))
 A = os.path.join(here, 'assets')
 make(os.path.join(WB, '字体/优设标题黑.ttf'), os.path.join(A, 'title.woff'))
-# Noto Sans CJK Bold 里第 2 个是简体中文（SC）
-ttc = '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc'
-names = [f['name'].getDebugName(1) for f in TTCollection(ttc).fonts]
-make(ttc, os.path.join(A, 'sub.woff'), [i for i, n in enumerate(names) if n.endswith('SC')][0])
+# 字幕：得意黑 SmileySans（阿亮 10-20）
+make(os.path.join(WB, '字体/SmileySans-Oblique.ttf'), os.path.join(A, 'sub.woff'))

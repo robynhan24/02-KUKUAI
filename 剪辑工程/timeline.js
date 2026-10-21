@@ -102,12 +102,8 @@
   }
   function pip(ctx, t, E, t0, t1) {
     if (window.__jyPip) window.__jyPip.add(t0.toFixed(3) + ',' + t1.toFixed(3));   // 导出剪映：记下小圆窗的时间
-    if (D.noPip) return;
-    const k = ease.back(prog(t, t0, t0 + .35)) * (1 - ease.out(prog(t, t1 - .2, t1)));
-    if (k <= 0) return;
-    ctx.save(); ctx.translate(PIP.x, PIP.y); ctx.scale(k, k);
-    D.pip(ctx, anchorEl(E, t), pipSrc(anchorV(t)), 0, 0, PIP.d);
-    ctx.restore();
+    if (D.noPip || t < t0 - .05 || t >= t1) return;     // 阿亮 10-20：小圆窗固定在左下角，不做出现动画
+    D.pip(ctx, anchorEl(E, t), pipSrc(anchorV(t)), PIP.x, PIP.y, PIP.d);
   }
   /** 真人大画面：慢慢推近；close=true 用近景 */
   /** 真人全屏画面的位置：人物水平居中；头顶留白全景约 12%、近景约 8%；慢慢推近 */
@@ -122,66 +118,84 @@
       t0, t1, draw(ctx, t, E) {
         const el = anchorEl(E, t); if (!el) return;
         const g = anchorGeom(t, t0, t1, o.close);
-        ctx.drawImage(el, g.x, g.y, g.w, g.h);
-        // 进场：0.18 秒白闪 / 推近，避免硬切
-        const f = 1 - prog(t, t0, t0 + .18); if (f > 0 && o.flash !== false) { ctx.fillStyle = `rgba(255,255,255,${.35 * f})`; ctx.fillRect(0, 0, 1920, 1080); }
+        // 转场（阿亮 10-20：不再白闪）：从网格底淡入并轻推，结束前淡出
+        const kin = o.xin === 0 ? 1 : ease.out(prog(t, t0, t0 + .3)), kout = o.xout === 0 ? 1 : 1 - prog(t, t1 - .18, t1), a = Math.min(kin, kout);
+        if (a < 1) D.bg(ctx, t);
+        const z = lerp(1.03, 1, kin);
+        ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
+        ctx.drawImage(el, g.x, g.y, g.w, g.h); ctx.restore();
       },
     };
   }
 
   /* ---------- 场景 ---------- */
   const scenes = [];
+  const lerpR = (a, b, k) => a.map((v, i) => lerp(v, b[i], k));
 
-  // ① 0–1.95 「来，老师、科研党们，都看过来！」真人开场
-  scenes.push(anchorFull(0, 1.95, { flash: false }));
-
-  /** 整屏录屏场景（阿亮 10-20：录屏全显 ≈1680×945；讲到重点时局部放大，背景虚化压暗）
-   *  get(t, E) 返回 {el, iw, ih, focus:[...]}；窗口从右侧甩进来，左下角主播小圆窗 */
-  function recScene(t0, t1, get, o = {}) {
+  /** 全屏录屏场景（阿亮 10-20 第三版）：录屏铺满全屏、连贯播放；重点用镜头推拉 + 马克笔 / 框选。
+   *  o.asset 录屏；o.iw/ih 坐标空间（原始录屏像素）；o.src = [[成片时间, 录屏时间, 速度]...]（速度 0 = 停在这一帧）
+   *  o.cam = [[时间, 区域或 null]...] 镜头；o.marks = [{r, at, end, kind:'hl'|'box'}]
+   *  o.xin / o.xout 进出场过渡（换素材时用），o.cuts 同一录屏里跳一段时的软切（快速淡出淡入） */
+  function fullScene(t0, t1, o) {
+    const srcAt = t => { let v = 0; for (const [ta, s0, r] of o.src) if (t >= ta - 1e-6) v = s0 + (t - ta) * r; return v; };
+    const xin = o.xin == null ? .35 : o.xin, xout = o.xout == null ? .22 : o.xout;
     return {
-      kind: 'rec', get, opts: o,
-      t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, o.bg);
-        const R = get(t, E), inK = o.noIn ? 1 : ease.out(prog(t, t0, t0 + .32));
-        ctx.save(); ctx.translate(960 + (1 - inK) * 1100, 508); ctx.rotate((1 - inK) * .06); ctx.translate(-960, -508);
-        D.rec(ctx, t, R.el, R.iw, R.ih, { focus: R.focus });   // 竖屏自动按手机画（外框 + 虚化铺底）
+      kind: 'full', t0, t1, o, draw(ctx, t, E) {
+        D.bg(ctx, t);
+        let a = 1, z = 1;
+        if (xin > 0 && t < t0 + xin) { const k = ease.out(prog(t, t0, t0 + xin)); a = k; z = lerp(1.05, 1, k); }
+        if (xout > 0 && t > t1 - xout) { const k = prog(t, t1 - xout, t1); a = Math.min(a, 1 - k); z = lerp(1, 1.03, k); }
+        for (const c of o.cuts || []) { const d = Math.abs(t - c); if (d < .16) a = Math.min(a, d / .16); }
+        const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t));
+        ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
+        if (o.ih > o.iw) D.rec(ctx, t, el, o.iw, o.ih, {});          // 竖屏手机：外框 + 虚化铺底
+        else D.recFull(ctx, t, el, o.iw, o.ih, { cam: o.cam, marks: o.marks });
         ctx.restore();
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     };
   }
-  const lerpR = (a, b, k) => a.map((v, i) => lerp(v, b[i], k));
-
-  // ② 1.95–4.93 「你看AI制作的这个3D高数课件，能拖、能转」3D 课件整屏录屏 → 放大被拖动的曲面
-  scenes.push(recScene(1.95, 4.93, (t, E) => ({
-    el: E.video('c08', t - 1.95), iw: 1992, ih: 1440,
-    focus: [{ at: 2.75, r: [150, 700, 720, 1160], maxH: 760 }],
-  })));
-
-  // ③ 4.93–8.17 「还配了一份文献出处标得清清楚楚的教研报告」报告整屏 → 放大参考文献，逐条涂黄
-  {
-    const O = [450, 150], HL = [ // 参考文献页里的行（截图坐标）
-      [214, 254, 98, 278, T(5.75)],
-      [410, 450, 100, 1390, T(6.50)], [470, 509, 100, 1466, T(6.78)], [529, 568, 100, 1154, T(7.02)],
-      [589, 628, 100, 1446, T(7.26)], [648, 687, 100, 1595, T(7.50)],
-    ];
-    scenes.push(recScene(4.93, 8.17, (t, E) => ({
-      el: E.image('ref'), iw: 2560, ih: 1440,
-      focus: [{ at: T(5.45), r: [520, 340, 2080, 860], marks: HL.map(([y0, y1, x0, x1, at]) => ({ r: [x0 + O[0], y0 + O[1] - 4, x1 + O[0], y1 + O[1] + 4], at })) }],
-    }), { bg: { c1: 'rgba(245,223,39,.18)' } }));
+  /** 两个动画场景之间交叉淡化（不硬切） */
+  function blend(sA, sB, d = .35) {
+    return { kind: 'gfx', t0: sA.t0, t1: sB.t1, draw(ctx, t, E) {
+      if (t < sB.t0) return sA.draw(ctx, t, E);
+      sB.draw(ctx, t, E);
+      const k = prog(t, sB.t0, sB.t0 + d); if (k >= 1) return;
+      ctx.save(); ctx.globalAlpha = 1 - k; sA.draw(ctx, Math.min(t, sA.t1 - 1e-3), E); ctx.restore();
+    } };
   }
+  // 3D 课件（1992×1440）三个模块的区域
+  const M1 = [160, 620, 720, 1180], M2 = [715, 620, 1265, 1180], M3 = [1270, 620, 1830, 1180];
 
-  // ④ 8.17–11.99 「前阵子有位老师在评论区吐槽，他在做一个高数教研专题」真人讲故事
+  /* ================= 第 1 段：开头 ================= */
+
+  // ① 0–4.93 「来，老师、科研党们，都看过来！你看AI制作的这个3D高数课件，能拖、能转」
+  //    开头直接全屏 3D 交互课件高光：全画面 → 推到拖动的曲面（能拖）→ 移到旋转的切平面（能转）
+  scenes.push(fullScene(0, 4.93, {
+    asset: 'r08', iw: 1992, ih: 1440, xin: 0, src: [[0, .2, 1.3]],
+    cam: [[0, null], [1.6, M1], [3.85, M2]],
+  }));
+
+  // ② 4.93–8.17 「还配了一份文献出处标得清清楚楚的教研报告」报告录屏翻到参考文献 → 推近，逐条马克笔
+  scenes.push(fullScene(4.93, 8.17, {
+    asset: 'r03', iw: 2560, ih: 1440, src: [[4.93, 14.4, 1], [6.03, 15.5, 0]],
+    cam: [[4.93, null], [6.0, [520, 320, 2480, 880]]],
+    marks: [[548, 360, 728, 404, 6.6], [550, 556, 1840, 600, T(6.55)], [550, 616, 1916, 655, T(6.80)], [550, 675, 1604, 714, T(7.05)], [550, 735, 1896, 774, T(7.30)], [550, 794, 2045, 833, T(7.55)]]
+      .map(([a, b, c, d, at]) => ({ r: [a, b, c, d], at: Math.max(at, 6.7), kind: 'hl' })),
+  }));
+
+  // ③ 8.17–11.99 「前阵子有位老师在评论区吐槽，他在做一个高数教研专题」真人
   scenes.push(anchorFull(8.17, 11.99));
 
-  // ⑤ 11.99–14.07 「但文献怎么理都理不顺」一堆文献截图乱飞 + 红笔乱线
+  // ④ 11.99–16.11 「但文献怎么理都理不顺，3D课件呢更是无从下手」文献截图乱飞 + 红笔 → 交叉淡化成空坐标轴 + 问号
+  //   （原 ⑤） 「但文献怎么理都理不顺」一堆文献截图乱飞 + 红笔乱线
   {
     const t0 = 11.99, t1 = 14.07;
     const CARDS = [ // 图, 中心x, 中心y, 角度, 进场延迟
       ['lit1', 760, 420, -.10, 0], ['lit3', 1180, 520, .08, .18], ['lit2', 820, 640, .06, .36], ['lit4', 1220, 380, -.07, .52],
     ];
     let scrib = null;
-    scenes.push({
+    var S5 = ({
       t0, t1, draw(ctx, t, E) {
         D.bg(ctx, t, { c1: 'rgba(233,66,84,.22)' });
         const shake = Math.sin(t * 41) * 3;
@@ -207,10 +221,10 @@
     });
   }
 
-  // ⑥ 14.07–16.11 「3D课件呢更是无从下手」空空的三维坐标系 + 大问号
+  //   （原 ⑥） 「3D课件呢更是无从下手」空空的三维坐标系 + 大问号
   {
     const t0 = 14.07, t1 = 16.11;
-    scenes.push({
+    var S6 = ({
       t0, t1, draw(ctx, t, E) {
         D.bg(ctx, t, { c1: 'rgba(57,200,114,.18)' });
         // 课件的影子：压暗、去色
@@ -234,10 +248,12 @@
     });
   }
 
-  // ⑦ 16.11–18.87 「哎，底下有网友就推荐了一个叫库库AI的工具」真人（近景）
+  scenes.push(blend(S5, S6));
+
+  // ⑤ 16.11–18.87 「哎，底下有网友就推荐了一个叫库库AI的工具」真人近景
   scenes.push(anchorFull(16.11, 18.87, { close: true }));
 
-  // ⑧ 18.87–19.95 停顿：库库AI logo 单独出场（重击同帧）
+  // ⑥ 18.87–19.95 停顿：库库AI logo 单独出场（重击同帧）
   {
     const t0 = 18.87, t1 = 19.95;
     scenes.push({
@@ -267,37 +283,10 @@
     });
   }
 
-  // ⑨ 19.95–22.79 「我拿来一试，还真能一条龙跑下来」四步流程像传送带一样串起来
-  {
-    const t0 = 19.95, t1 = 22.79;
-    const ITEMS = [['lit1', [0, 0, 2560, 1440]], ['lit3', [0, 0, 2560, 1440]], ['ref', [0, 0, 2560, 1440]], ['c08still', [0, 0, 1992, 1440]]];
-    const STEP = [t0 + .05, T(20.75), T(21.35), T(21.95)]; // 每一步移到中间的时间
-    scenes.push({
-      t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c2: 'rgba(57,200,114,.22)' });
-        let pos = 0; for (let i = 1; i < STEP.length; i++) pos += ease.inOut(prog(t, STEP[i] - .32, STEP[i]));
-        const gap = 1120, w = 1040, h = 600, cy = 470;
-        // 串起来的光带
-        ctx.save(); ctx.strokeStyle = 'rgba(185,255,0,.65)'; ctx.lineWidth = 8; ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 25;
-        ctx.beginPath(); ctx.moveTo(960 - pos * gap, cy); ctx.lineTo(960 + (3 - pos) * gap, cy); ctx.stroke(); ctx.restore();
-        const inK = ease.out(prog(t, t0, t0 + .3));
-        ITEMS.forEach(([n, src], i) => {
-          const d = i - pos, cx = 960 + d * gap + (1 - inK) * 1200, a = Math.abs(d);
-          if (cx < -700 || cx > 2620) return;
-          const s = lerp(1, .78, clamp(a)), al = lerp(1, .45, clamp(a));
-          ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.globalAlpha = al;
-          D.win(ctx, E.image(n), src, -w / 2, -h / 2, w, h, { r: 22, contain: true, border: a < .5 ? 'rgba(185,255,0,.9)' : undefined });
-          ctx.restore();
-        });
-        pip(ctx, t, E, t0 + .1, t1);
-      },
-    });
-  }
+  // ⑦ 19.95–25.69 「我拿来一试，还真能一条龙跑下来。那今天我就手把手带你做一个完整的教研专题」真人（不再快切）
+  scenes.push(anchorFull(19.95, 25.69));
 
-  // ⑩ 22.79–25.69 「那今天我就手把手带你做一个完整的教研专题」真人
-  scenes.push(anchorFull(22.79, 25.69));
-
-  // ⑪ 25.69–27.81 「从查文献到出课件」章节导航（秋芝-豆包式编号卡）
+  // ⑧ 25.69–27.81 「从查文献到出课件」章节导航（秋芝-豆包式编号卡）
   const NAV = [['查文献', '#2388FF', T(25.80)], ['出报告', '#F5DF27', T(26.25)], ['做课件', '#39C872', T(26.65)]];
   /** 导航卡：reveal[i] = 名字揭晓时间（-1 = 已揭晓）；focus = 当前章节（其余压暗），-1 = 不压暗 */
   function navDraw(ctx, t, t0, reveal, focus, o = {}) {
@@ -325,7 +314,7 @@
     scenes.push({ t0, t1, draw(ctx, t, E) { D.bg(ctx, t); navDraw(ctx, t, t0, NAV.map(n => n[2]), -1); pip(ctx, t, E, t0 + .1, t1); } });
   }
 
-  // ⑫ 27.81–29.85 「学会以后，从此教研不发愁」真人收尾
+  // ⑨ 27.81–29.85 「学会以后，从此教研不发愁」真人收尾
   scenes.push(anchorFull(27.81, SEG2));
 
   /* ================= 第 2 段：① 查文献 ================= */
@@ -334,22 +323,19 @@
   const CH1 = 29.85, CH1_HIT = 30.05;
   scenes.push({ t0: CH1, t1: 31.05, draw(ctx, t) { D.bg(ctx, t, { c2: 'rgba(35,136,255,.45)' }); navDraw(ctx, t, CH1 - .4, [-1, -1, -1], 0, { hit: CH1_HIT }); } });
 
-  // 13  31.05–35.83 「先调用文献检索Skill，让AI围绕这个课题定向检索核心文献」整屏录屏 → 放大技能标签和输入框 → 指令逐句涂黄
-  {
-    const cut = T(31.30), RA = [560, 570, 1560, 800], RB = [590, 670, 1880, 900];
-    scenes.push(recScene(31.05, 35.83, (t, E) => ({
-      el: t < cut ? E.video('c01', Math.min(3.3, 2.15 + (t - 31.05))) : E.image('prompt'), iw: 2560, ih: 1440,
-      focus: [{
-        at: 31.45, r: tt => lerpR(RA, RB, ease.inOut(prog(tt, cut, cut + .4))),
-        marks: [{ r: [770, 705, 1850, 755], at: T(31.74), dur: .9 }, { r: [670, 825, 1160, 875], at: T(33.70), dur: .45 }],
-      }],
-    })));
-  }
+  // 10  31.05–35.83 「先调用文献检索Skill，让AI围绕这个课题定向检索核心文献」
+  //     查文献录屏连贯播放（点技能 → 贴指令），停在指令上推近，马克笔描「围绕课题定向检索」「核心期刊、高被引文献」
+  const PR = [600, 640, 2480, 900];
+  scenes.push(fullScene(31.05, 35.83, {
+    asset: 'r01', iw: 2560, ih: 1440, src: [[31.05, 2.15, 1], [32.9, 4.0, 0]],
+    cam: [[31.05, null], [32.75, PR]],
+    marks: [{ r: [770, 705, 1850, 755], at: 33.55, dur: .7 }, { r: [670, 825, 1160, 875], at: T(33.70), dur: .45 }],
+  }));
 
-  // 14  35.83–40.59 「哎，可能有人会说，AI搜文献有啥新鲜的？但用过的都知道」真人
+  // 11  35.83–39.62 「哎，可能有人会说，AI搜文献有啥新鲜的？但用过的都知道」真人
   scenes.push(anchorFull(35.83, T(39.62)));
 
-  // 15  40.59–45.47 「大多数工具搜出来东一头西一头，还得自己挨个核对出处」示意：零散结果卡 + 放大镜挨个查
+  // 12  40.59–45.47 「大多数工具搜出来东一头西一头，还得自己挨个核对出处」示意：零散结果卡 + 放大镜挨个查
   {
     const t0 = T(39.62), t1 = 45.47, tE = T(41.58), tW = T(42.24), tC = T(43.38);
     const CARDS = [[-560, -160, -.08], [-40, -230, .05], [500, -150, -.04], [-420, 170, .06], [80, 150, -.06], [600, 190, .07]];
@@ -388,87 +374,41 @@
     });
   }
 
-  // 16  45.47–49.18 「而库库AI直接对接知网、百度学术这些学术库」徽章连线
+  // 13  45.47–53.80 「而库库AI直接对接知网、百度学术这些学术库。作者、发表时间全都列得很清楚，所以文献都有迹可循」
+  //     回到查文献录屏：指令里描「知网、百度学术等权威学术数据库」→ 软切到结果页，鼠标划过引用、弹出作者和年份（原速）→ 停在弹窗上推近、框作者和年份
+  const RP = [1420, 660, 2380, 1060], tRes = T(48.62);
+  scenes.push(fullScene(45.47, T(53.55), {
+    asset: 'r01', iw: 2560, ih: 1440, src: [[45.47, 4.0, 0], [tRes, 17.6, 1], [tRes + 3.4, 21.0, 0]], cuts: [tRes],
+    cam: [[45.47, PR], [tRes, null], [tRes + .4, [700, 560, 2500, 1100]], [tRes + 3.3, [1250, 620, 2420, 1100]]],
+    marks: [
+      { r: [1745, 765, 2410, 815], at: T(46.39), end: tRes, dur: .5 }, { r: [608, 825, 670, 875], at: T(46.39) + .5, end: tRes },
+      { r: [1840, 703, 1960, 747], at: tRes + 3.9, kind: 'box' }, { r: [1982, 703, 2052, 747], at: tRes + 4.15, kind: 'box' },
+    ],
+  }));
+
+  // 14  53.80–55.95 「单纯检索文献还只是基本操作」真人近景
+  scenes.push(anchorFull(T(53.55), T(55.70), { close: true }));
+
+  // 15  55.95–59.25 「更省心的是，可以对文献进行结构化梳理」梳理录屏：贴入梳理指令（原速）→ 推近，马克笔描「做结构化梳理与证据链搭建」
+  scenes.push(fullScene(T(55.70), T(59.00), {
+    asset: 'r02a', iw: 2560, ih: 1440, src: [[T(55.70), 1.4, 1], [T(55.70) + 1.8, 3.2, 0]],
+    cam: [[T(55.70), null], [T(55.70) + 1.6, [480, 1040, 2480, 1300]]],
+    marks: [{ r: [1030, 1115, 1455, 1165], at: T(57.72), dur: .5 }],
+  }));
+
+  // 16  59.25–66.45 「针对14篇文献建立完整论证框架，还分好了核心论据和补充资料，连研究缺口都给你点出来了」
+  //     梳理结果录屏：开头一段推近（描「14 篇文献」「四段论证」，框「核心论据与补充资料」）→ 拉远、往下滚到实践效果（1.3 倍）→ 推近描研究缺口
   {
-    const t0 = 45.47, t1 = T(48.62), tZ = T(46.39), tB = T(46.87), tL = T(47.83);
-    const BADGES = [['知网', 1380, 300, tZ], ['百度学术', 1380, 640, tB]];
-    scenes.push({
-      t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c2: 'rgba(185,255,0,.16)' });
-        const lk = ease.back(prog(t, t0, t0 + .35));
-        // 连线（流动的点）
-        BADGES.forEach(([, bx, by, ta]) => {
-          const p = ease.out(prog(t, ta, ta + .35)); if (p <= 0) return;
-          const x0 = 820, y0 = 470, x1 = lerp(x0, bx - 250, p), y1 = lerp(y0, by, p);
-          const glow = 1 + .6 * Math.max(0, Math.sin(prog(t, tL, tL + .6) * Math.PI));
-          ctx.save(); ctx.strokeStyle = '#b9ff00'; ctx.lineWidth = 8 * glow; ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 24 * glow;
-          ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-          for (let d = 0; d < 3; d++) { const f = ((t * .9 + d / 3) % 1) * p; ctx.beginPath(); ctx.arc(lerp(x0, x1, f), lerp(y0, y1, f), 11, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); }
-          ctx.restore();
-        });
-        // 库库AI 徽章
-        ctx.save(); ctx.translate(560, 470); ctx.scale(lk, lk);
-        D.rr(ctx, -300, -120, 600, 240, 40); ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(139,92,246,.8)'; ctx.shadowBlur = 50; ctx.fill(); ctx.shadowBlur = 0;
-        const lg = E.image('logo'); if (lg) ctx.drawImage(lg, -230, -60, 460, 460 * 249 / 960);
-        ctx.restore();
-        // 学术库徽章
-        BADGES.forEach(([name, bx, by, ta]) => {
-          const k = ease.back(prog(t, ta + .15, ta + .5)); if (k <= 0) return;
-          ctx.save(); ctx.translate(bx, by); ctx.scale(k, k);
-          D.rr(ctx, -260, -95, 520, 190, 34); ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 40; ctx.fill(); ctx.shadowBlur = 0;
-          ctx.lineWidth = 6; ctx.strokeStyle = '#b9ff00'; ctx.stroke();
-          D.text(ctx, name, 0, 4, { size: 96, color: '#15151c', shadow: false });
-          ctx.restore();
-        });
-        pip(ctx, t, E, t0 + .05, t1);
-      },
-    });
-  }
-
-  // 17  49.18–53.80 「作者、发表时间全都列得很清楚，所以文献都有迹可循」整屏 → 放大引用弹窗（作者、年份）→ 换成放大正文，来源标签逐个框出
-  {
-    const O = [520, 165], add = r => [r[0] + O[0], r[1] + O[1], r[2] + O[0], r[3] + O[1]];
-    const CHIPS = [[1130, 18, 1405, 62], [1230, 280, 1460, 322], [1510, 340, 1795, 382], [1335, 400, 1590, 442], [1228, 458, 1535, 502], [418, 578, 705, 620]].map(add);
-    const RP = [1420, 660, 2380, 1060], RT = [520, 165, 2520, 865], tOut = T(51.30);
-    scenes.push(recScene(49.18, 53.80, (t, E) => ({
-      el: E.image('cite'), iw: 2560, ih: 1440,
-      focus: [{
-        at: 49.40, r: tt => lerpR(RP, RT, ease.inOut(prog(tt, tOut, tOut + .5))),
-        marks: [
-          { r: add([1320, 538, 1440, 582]), at: 49.70 }, { r: add([1462, 538, 1532, 582]), at: T(49.25) },
-          { r: add([940, 608, 1810, 718]), at: T(49.90), kind: 'box' },
-          ...CHIPS.map((r, i) => ({ r, at: T(51.75) + i * .2, kind: 'box' })),
-        ],
-      }],
-    }), { bg: { c1: 'rgba(245,223,39,.16)' } }));
-  }
-
-  // 18  53.80–55.95 「单纯检索文献还只是基本操作」真人近景
-  scenes.push(anchorFull(53.80, T(55.70), { close: true }));
-
-  // 19  55.95–59.25 「更省心的是，可以对文献进行结构化梳理」整屏 → 放大梳理指令，涂黄「结构化梳理」
-  scenes.push(recScene(T(55.70), T(59.00), (t, E) => ({
-    el: E.image('sortp'), iw: 2560, ih: 1440,
-    focus: [{ at: T(55.70) + .45, r: [530, 1095, 2210, 1300], marks: [{ r: [1030, 1115, 1455, 1165], at: T(57.72), dur: .5 }] }],
-  })));
-
-  // 20  59.25–66.95 「针对14篇文献建立完整论证框架，还分好了核心论据和补充资料，连研究缺口都给你点出来了」
-  //     梳理结果整屏 → 放大开头一段（14 篇、四段论证、核心论据与补充资料）→ 翻到「实践效果」，放大研究缺口那句
-  {
-    const t0 = T(59.00), tGap = T(64.20);
-    scenes.push(recScene(t0, SEG3, (t, E) => t < tGap ? {
-      el: E.image('sort0'), iw: 2560, ih: 1440,
-      focus: [{ at: t0 + .35, r: [520, 585, 1980, 1055], marks: [
-        { r: [865, 605, 1025, 655], at: T(59.38) }, { r: [1105, 605, 1960, 655], at: T(60.30), dur: 1.0 },
-        { r: [1308, 665, 1662, 715], at: T(62.60), kind: 'box' },
-      ] }],
-    } : {
-      el: E.image('lit4'), iw: 2560, ih: 1440,
-      focus: [{ at: tGap + .15, r: [520, 340, 2460, 540], maxW: 1700, marks: [
-        { r: [1625, 402, 2445, 452], at: T(64.45), dur: .4 }, { r: [545, 462, 1170, 512], at: T(64.85), dur: .4 },
-        { r: [540, 397, 2450, 517], at: T(64.55), kind: 'box' },
-      ] }],
-    }, { bg: { c2: 'rgba(57,200,114,.2)' } }));
+    const t0 = T(59.00), tS = T(63.20), tG = tS + 1.25;
+    scenes.push(fullScene(t0, SEG3, {
+      asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 11.0, 0]], cuts: [tS],
+      cam: [[t0, [520, 560, 2480, 730]], [tS, null], [tG, [520, 360, 2480, 540]]],
+      marks: [
+        { r: [865, 605, 1025, 655], at: T(59.38), end: tS }, { r: [1105, 605, 1960, 655], at: T(60.30), dur: 1.0, end: tS },
+        { r: [1308, 665, 1662, 715], at: T(62.40), end: tS, kind: 'box' },
+        { r: [1625, 402, 2445, 452], at: tG + .55, dur: .45 }, { r: [545, 462, 1170, 512], at: tG + .95, dur: .4 },
+      ],
+    }));
   }
 
   /* ================= 第 3 段：② 出报告 ================= */
@@ -477,72 +417,36 @@
   const CH2_HIT = 66.65;
   scenes.push({ t0: SEG3, t1: 67.65, draw(ctx, t) { D.bg(ctx, t, { c2: 'rgba(245,223,39,.35)' }); navDraw(ctx, t, SEG3 - .4, [-1, -1, -1], 1, { hit: CH2_HIT }); } });
 
-  // 21  67.65–70.48 「有了完整的证据链，出报告就水到渠成了」真人
+  // 17  67.65–70.48 「有了完整的证据链，出报告就水到渠成了」真人
   scenes.push(anchorFull(67.65, T(69.30)));
 
-  // 22  70.48–72.92 「这里我们直接召唤教学设计专家」整屏录屏 → 放大「召唤专家 › 教学设计专家」菜单
-  scenes.push(recScene(T(69.30), T(71.74), (t, E) => ({
-    el: E.video('c03e', t - T(69.30) + .05), iw: 2560, ih: 1440,
-    focus: [{ at: T(69.30) + .7, r: [540, 540, 1520, 1330], maxH: 760 }],
-  })));
-
-  // 23  72.92–77.78 「围绕这个课题，再结合前面的工作成果，给一份符合教研规范的报告」放大指令，跟着口播涂黄
-  scenes.push(recScene(T(71.74), T(76.60), (t, E) => ({
-    el: E.image('rp_prompt'), iw: 2560, ih: 1440,
-    focus: [{ at: T(71.74) + .3, r: [1135, 455, 2500, 800], marks: [
-      { r: [2078, 490, 2460, 535], at: T(72.00) }, { r: [1160, 550, 1640, 595], at: T(72.20) },
-      { r: [1160, 490, 1636, 535], at: T(72.95), dur: .5 },
-      { r: [1534, 668, 1880, 713], at: T(75.00), dur: .4 },
-    ] }],
-  })));
-
-  // 24  77.78–80.80 「不过有一说一，我的高数早就还给老师了」真人近景
-  scenes.push(anchorFull(T(76.60), T(79.62), { close: true }));
-
-  // 25  80.80–84.43 「但单看这份报告的结构逻辑，就知道它不是东拼西凑」报告整屏快速翻一遍（1.65 倍速）
-  scenes.push(recScene(T(79.62), T(83.25), (t, E) => ({ el: E.video('c03s', t - T(79.62)), iw: 2560, ih: 1440 })));
-
-  // 26  84.43–86.93 「而是顺着这个逻辑线铺下来的」四个大标题从报告里放大出来，沿一条线排下来
+  // 18  70.48–77.78 「这里我们直接召唤教学设计专家，围绕这个课题，再结合前面的工作成果，给一份符合教研规范的报告」
+  //     报告录屏：+ → 召唤专家 → 教学设计专家（原速，推近菜单）→ 软切到发出的指令，推近，马克笔描重点
   {
-    const t0 = T(83.25), t1 = T(85.75);
-    const HEADS = [['rp_h1', [540, 355, 815, 415]], ['rp_h2', [540, 455, 900, 520]], ['rp_h3', [540, 1090, 900, 1155]], ['rp_h4', [540, 640, 900, 705]]];
-    const at = i => T(83.60) + i * .32;
-    scenes.push({
-      t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c2: 'rgba(245,223,39,.25)' });
-        // 背景：报告整屏，虚化压暗
-        D.rec(ctx, t, E.image('rp_h4'), 2560, 1440, { blur: ease.out(prog(t, t0, t0 + .3)) });
-        const cw = 820, ch = 148, gap = 52, top = 450 - (4 * ch + 3 * gap) / 2, cx = 1000;
-        // 逻辑线
-        const lp = ease.inOut(prog(t, at(0), at(3) + .3));
-        ctx.save(); ctx.strokeStyle = '#b9ff00'; ctx.lineWidth = 8; ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 22;
-        ctx.beginPath(); ctx.moveTo(cx - cw / 2 - 60, top + ch / 2); ctx.lineTo(cx - cw / 2 - 60, top + ch / 2 + lp * 3 * (ch + gap)); ctx.stroke(); ctx.restore();
-        HEADS.forEach(([n, r], i) => {
-          const k = ease.back(prog(t, at(i), at(i) + .32)); if (k <= 0) return;
-          const y = top + i * (ch + gap), im = E.image(n);
-          ctx.save(); ctx.translate(cx, y + ch / 2); ctx.scale(k, k); ctx.globalAlpha = clamp(k * 1.5);
-          ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
-          ctx.save(); D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.clip();
-          if (im) { const rw = r[2] - r[0], rh = r[3] - r[1], s = Math.min((cw - 80) / rw, (ch - 30) / rh); ctx.drawImage(im, r[0], r[1], rw, rh, -cw / 2 + 50, -rh * s / 2, rw * s, rh * s); }
-          ctx.restore();
-          ctx.lineWidth = 5; ctx.strokeStyle = '#ffaa42'; D.rr(ctx, -cw / 2, -ch / 2, cw, ch, 18); ctx.stroke();
-          ctx.restore();
-          // 线上的节点
-          ctx.save(); ctx.globalAlpha = clamp(k); ctx.beginPath(); ctx.arc(cx - cw / 2 - 60, y + ch / 2, 18, 0, Math.PI * 2); ctx.fillStyle = '#b9ff00'; ctx.fill(); ctx.restore();
-        });
-        pip(ctx, t, E, t0 + .05, t1);
-      },
-    });
+    const t0 = T(69.30), tP = T(71.74);
+    scenes.push(fullScene(t0, T(76.60), {
+      asset: 'r03', iw: 2560, ih: 1440, src: [[t0, .4, 1], [tP, 6.0, 0]], cuts: [tP],
+      cam: [[t0, null], [t0 + .5, [520, 820, 1520, 1360]], [tP, [1135, 455, 2500, 800]]],
+      marks: [
+        { r: [2078, 490, 2460, 535], at: tP + .75 }, { r: [1160, 550, 1640, 595], at: tP + 1.0 },
+        { r: [1160, 490, 1636, 535], at: T(72.95), dur: .5 }, { r: [1534, 668, 1880, 713], at: T(75.00), dur: .4 },
+      ],
+    }));
   }
 
-  // 27  86.93–92.5 「参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」放大参考文献，先框核心论据，再框补充资料
-  scenes.push(recScene(T(85.75), SEG4, (t, E) => ({
-    el: E.image('rp_refs'), iw: 2560, ih: 1440,
-    focus: [{ at: T(85.75) + .3, r: [520, 160, 2460, 1060], marks: [
-      { r: [540, 175, 700, 225], at: T(86.70) }, { r: [545, 250, 2450, 825], at: T(86.95), kind: 'box' },
-      { r: [540, 875, 700, 935], at: T(88.60) }, { r: [545, 950, 2450, 1060], at: T(88.85), kind: 'box' },
-    ] }],
-  }), { bg: { c1: 'rgba(245,223,39,.16)' } }));
+  // 19  77.78–80.80 「不过有一说一，我的高数早就还给老师了」真人近景
+  scenes.push(anchorFull(T(76.60), T(79.62), { close: true }));
+
+  // 20  80.80–92.0 「但单看这份报告的结构逻辑……而是顺着这个逻辑线铺下来的。参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」
+  //     同一段报告录屏原速连贯往下翻：标题 → 教研背景 → 概念几何解析 → 教学设计方案 → 效果预判 → 参考文献；停在参考文献，推近框「核心论据」、再框「补充资料」
+  {
+    const t0 = T(79.62), tH = t0 + 7.4;
+    scenes.push(fullScene(t0, SEG4, {
+      asset: 'r03', iw: 2560, ih: 1440, src: [[t0, 8.6, 1], [tH, 16.0, 0]],
+      cam: [[t0, null], [tH + .1, [520, 160, 2460, 840]], [T(88.40), [520, 520, 2460, 1110]]],
+      marks: [{ r: [545, 250, 2450, 825], at: tH + .8, kind: 'box' }, { r: [545, 950, 2450, 1060], at: T(88.40) + .75, kind: 'box' }],
+    }));
+  }
 
   /* ================= 第 4 段：③ 做课件 + 沉淀 Skill + 手机远程 ================= */
 
@@ -550,57 +454,52 @@
   const CH3_HIT = 92.2;
   scenes.push({ t0: SEG4, t1: 93.20, draw(ctx, t) { D.bg(ctx, t, { c2: 'rgba(57,200,114,.35)' }); navDraw(ctx, t, SEG4 - .4, [-1, -1, -1], 2, { hit: CH3_HIT }); } });
 
-  // 28  93.20–96.62 「最后我们就能做出开头那个能拖能转的3D课件」课件整屏（滑块转动切平面）→ 放大三个模块
-  scenes.push(recScene(93.20, T(94.60), (t, E) => ({
-    el: E.video('c08', 6.0 + (t - 93.20)), iw: 1992, ih: 1440,
-    focus: [{ at: 93.80, r: [120, 600, 1880, 1360] }],
-  })));
+  // 21  93.20–96.62 「最后我们就能做出开头那个能拖能转的3D课件」3D 课件录屏：滑块转动切平面（原速），推近第二个模块
+  scenes.push(fullScene(93.20, T(94.60), {
+    asset: 'r08', iw: 1992, ih: 1440, src: [[93.20, 5.8, 1]],
+    cam: [[93.20, null], [94.0, M2]],
+  }));
 
-  // 29  96.62–100.47 「直接调用「离线互动科学仿真HTML生成」这个技能」放大技能菜单，框出这一项
-  scenes.push(recScene(T(94.60), T(98.45), (t, E) => ({
-    el: E.video('c04a', t - T(94.60)), iw: 2560, ih: 1440,
-    focus: [{ at: T(94.60) + .5, r: [560, 550, 1500, 1300], maxH: 760, marks: [{ r: [1105, 700, 1445, 752], at: T(95.47), kind: 'box' }] }],
-  })));
+  // 22  96.62–102.87 「直接调用「离线互动科学仿真HTML生成」这个技能，让它生成配套的3D交互课件」
+  //     课件录屏原速连贯：+ → 召唤技能 → 框出「离线互动科学仿真…」→ 输入框出现技能、贴入指令 → 发送
+  scenes.push(fullScene(T(94.60), T(100.85), {
+    asset: 'r04', iw: 2560, ih: 1440, src: [[T(94.60), .6, 1]],
+    cam: [[T(94.60), null], [T(94.60) + .6, [560, 540, 1500, 1320]], [T(94.60) + 3.0, [540, 940, 2500, 1390]], [T(94.60) + 4.6, null]],
+    marks: [{ r: [1110, 700, 1440, 756], at: T(95.47), end: T(94.60) + 3.0, kind: 'box' }],
+  }));
 
-  // 30  100.47–102.87 「让它生成配套的3D交互课件」放大生成好的 .html 课件文件
-  scenes.push(recScene(T(98.45), T(100.85), (t, E) => ({
-    el: E.image('k_file'), iw: 2560, ih: 1440,
-    focus: [{ at: T(98.45) + .3, r: [540, 480, 2520, 820], marks: [{ r: [760, 522, 1612, 568], at: T(99.17), dur: .5 }] }],
-  })));
+  // 23  102.87–109.42 「它把三个知识点整合在了同一个三维曲面里，拖动锚点或滑块，抽象概念的几何本质」
+  //     3D 课件录屏连贯（1.15 倍）：全画面框出三个模块 → 推近拖锚点 → 移到旋转切平面
+  {
+    const t0 = T(100.85);
+    scenes.push(fullScene(t0, T(107.40), {
+      asset: 'r08', iw: 1992, ih: 1440, src: [[t0, 0, 1.15]],
+      cam: [[t0, null], [T(104.32), M1], [t0 + 5.3, M2]],
+      marks: [[185, 640, 420, 680, T(101.29)], [740, 640, 1040, 680, T(101.45)], [1295, 640, 1590, 680, T(101.61)]]
+        .map(([a, b, c, d, at]) => ({ r: [a, b, c, d], at, end: T(104.32), kind: 'box' })),
+    }));
+  }
 
-  // 31  102.87–106.22 「它把三个知识点整合在了同一个三维曲面里」三个模块标题逐个框出
-  scenes.push(recScene(T(100.85), T(104.20), (t, E) => ({
-    el: E.image('c08still'), iw: 1992, ih: 1440,
-    focus: [{ at: T(100.85) + .3, r: [120, 600, 1880, 1360], marks: [
-      { r: [180, 630, 420, 685], at: T(101.29), kind: 'box' }, { r: [740, 630, 1040, 685], at: T(101.45), kind: 'box' }, { r: [1295, 630, 1595, 685], at: T(101.61), kind: 'box' },
-    ] }],
-  })));
-
-  // 32  106.22–109.42 「拖动锚点或滑块，抽象概念的几何本质」原录屏整屏：拖锚点 → 拖滑块（2.47 倍速，不放大）
-  scenes.push(recScene(T(104.20), T(107.40), (t, E) => ({ el: E.video('c08c', t - T(104.20)), iw: 1992, ih: 1440 })));
-
-  // 33  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
+  // 24  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
   scenes.push(anchorFull(T(107.40), T(109.80), { close: true }));
 
-  // 阿亮 10-20：用原录屏，挑重点步骤，1–1.3 倍速（不逐个放大）
-  // 34  111.37–113.73 「还能沉淀成个人专属Skill」发出沉淀指令 → 「个人技能已成功创建并注册」（原速）
-  scenes.push(recScene(T(109.80), T(112.16), (t, E) => ({ el: E.video('c05a', t - T(109.80)), iw: 1920, ih: 1080 })));
+  // 25  111.37–115.47 「还能沉淀成个人专属Skill，后续可以一键复用」沉淀技能录屏：贴入指令 → 软切到「已成功创建并注册」（推近描）→ 软切到我的技能 → 使用 → 输入框出现模板（框）
+  {
+    const t0 = T(109.80), c1 = t0 + 1.1, c2 = T(112.16);
+    scenes.push(fullScene(t0, T(114.22), {
+      asset: 'r05', iw: 2560, ih: 1440, src: [[t0, 1.2, 1], [c1, 5.2, 0], [c2, 12.6, 1.15]], cuts: [c1, c2],
+      cam: [[t0, null], [c1, [500, 560, 1800, 900]], [c2, null]],
+      marks: [{ r: [552, 630, 1470, 680], at: c1 + .55, end: c2, dur: .5 }, { r: [600, 700, 870, 750], at: c2 + 1.35, kind: 'box' }],
+    }));
+  }
 
-  // 35  113.73–115.47 「后续可以一键复用」技能卡 → 使用 → 输入框出现「/可视化教研模板」（1.15 倍）
-  scenes.push(recScene(T(112.16), T(114.22), (t, E) => ({ el: E.video('c05b', t - T(112.16)), iw: 1920, ih: 1080 }), { noIn: true }));
-
-  // 36  115.47–116.52 「就算出门在外」电脑端打开「让手机也能控制电脑」（原速）
-  scenes.push(recScene(T(114.22), T(115.27), (t, E) => ({ el: E.video('c06r', t - T(114.22)), iw: 1920, ih: 1080 })));
-
-  // 37  116.52–118.98 「手机也可以直接远程操作电脑干活」手机：输入指令 → 发送（1.14 倍）
-  scenes.push(recScene(T(115.27), T(117.73), (t, E) => ({ el: E.video('c07a', t - T(115.27)), iw: 720, ih: 1560 })));
-
-  // 38  118.98–122.35 「工作照样继续跑，不用守在电脑旁边」手机：PPT 生成完成 → 翻看 PPT
-  scenes.push(recScene(T(117.73), SEG5, (t, E) => ({ el: E.video('c07b', t - T(117.73)), iw: 720, ih: 1560 }), { noIn: true }));
+  // 26  115.47–121.95 「就算出门在外，手机也可以直接远程操作电脑干活，工作照样继续跑，不用守在电脑旁边」
+  //     手机录屏（竖屏，加外框）原速连贯：输入指令发送 → PPT 生成完成 → 翻看 PPT
+  scenes.push(fullScene(T(114.22), SEG5, { asset: 'c07', iw: 720, ih: 1560, src: [[T(114.22), 0, 1.034]] }));
 
   /* ================= 第 5 段：结尾 ================= */
 
-  // 40  121.95–124.10 「AI能力真的是已经今非昔比了」真人
+  // 27  121.95–124.10 「AI能力真的是已经今非昔比了」真人
   scenes.push(anchorFull(SEG5, T(123.15)));
 
   /** 三步卡片（查文献 / 出报告 / 做课件）横排；at[i] 出现时间 */
@@ -626,7 +525,7 @@
     });
   }
 
-  // 41  124.10–128.10 「从单点回答问题，到承接一整套专业的工作流」一个问答气泡 → 三步工作流串起来
+  // 28  124.10–128.10 「从单点回答问题，到承接一整套专业的工作流」一个问答气泡 → 三步工作流串起来
   {
     const t0 = T(123.15), t1 = T(127.15), tB = T(123.25), tMove = T(124.45), AT = [T(124.75), T(125.29), T(125.77)];
     scenes.push({
@@ -649,30 +548,37 @@
     });
   }
 
-  // 42  128.10–129.70 「变化呢是肉眼可见」真人近景
+  // 29  128.10–129.70 「变化呢是肉眼可见」真人近景
   scenes.push(anchorFull(T(127.15), T(128.75), { close: true }));
 
-  // 43  129.70–133.40 「从文献整理，到专业的研究报告，再到立体交互式课件」三段原录屏快切回顾
-  scenes.push(recScene(T(128.75), T(129.55), (t, E) => ({ el: E.image('sort0'), iw: 2560, ih: 1440 })));
-  scenes.push(recScene(T(129.55), T(130.80), (t, E) => ({ el: E.image('rp_h1'), iw: 2560, ih: 1440 }), { noIn: true }));
-  scenes.push(recScene(T(130.80), T(132.45), (t, E) => ({ el: E.video('c08', 1.0 + (t - T(130.80))), iw: 1992, ih: 1440 }), { noIn: true }));
-
-  // 44  133.40–136.15 「库库AI一款工具就能一站式落地」三步卡片收拢进库库AI
+  // 30  129.70–136.15 「从文献整理，到专业的研究报告，再到立体交互式课件，库库AI一款工具就能一站式落地」
+  //     一个画面连贯完成：三张成果窗口随口播依次出现 → 收拢进库库AI → 三色光带（不再快切）
   {
-    const t0 = T(132.45), t1 = T(135.20), tIn = T(133.16), tOne = T(134.06);
+    const t0 = T(128.75), t1 = T(135.20), tIn = T(133.16), tOne = T(134.06);
+    const SHOTS = [['sort0', T(128.83), 0], ['rp_h1', T(129.79), 1], ['c08still', T(130.87), 2]];
     scenes.push({
       t0, t1, draw(ctx, t, E) {
-        D.bg(ctx, t, { c1: 'rgba(124,58,237,.5)', c2: 'rgba(185,255,0,.16)' });
-        const g = ease.inOut(prog(t, tIn - .25, tIn + .15));
-        ctx.save(); ctx.translate(960, 470); ctx.scale(lerp(1, .25, g), lerp(1, .25, g)); ctx.translate(-960, -470);
-        ctx.globalAlpha = 1 - g; stepRow(ctx, t, [t0, t0 + .08, t0 + .16], { cx: 960 }); ctx.restore();
+        D.bg(ctx, t);
+        const g = ease.inOut(prog(t, tIn - .3, tIn + .15));
+        const w = 560, h = 315, gap = 50, y = 300;
+        SHOTS.forEach(([n, at, i]) => {
+          const k = ease.back(prog(t, at, at + .4)); if (k <= 0) return;
+          const im = E.image(n), cx0 = 960 + (i - 1) * (w + gap), cx = lerp(cx0, 960, g), s = k * lerp(1, .3, g);
+          ctx.save(); ctx.translate(cx, y + h / 2 + (1 - k) * 60); ctx.scale(s, s); ctx.globalAlpha = clamp(k * 1.5) * (1 - g);
+          ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
+          ctx.save(); D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.clip(); if (im) { const kk = Math.max(w / im.width, h / im.height); ctx.drawImage(im, -im.width * kk / 2, -h / 2, im.width * kk, im.height * kk); } ctx.restore();
+          ctx.lineWidth = 6; ctx.strokeStyle = NAV[i][1]; D.rr(ctx, -w / 2, -h / 2, w, h, 16); ctx.stroke();
+          ctx.restore();
+          // 下面的步骤名（徽章）
+          const b = ease.back(prog(t, at + .15, at + .5)) * (1 - g);
+          if (b > 0) { ctx.save(); ctx.translate(cx, y + h + 80); ctx.scale(b, b); D.rr(ctx, -120, -44, 240, 88, 44); ctx.fillStyle = NAV[i][1]; ctx.fill(); D.text(ctx, NAV[i][0], 0, 4, { size: 56, color: i === 1 ? '#15151c' : '#fff', shadow: false }); ctx.restore(); }
+        });
         const k = prog(t, tIn, tIn + .22);
         if (k > 0) {
           const s = lerp(1.9, 1, ease.out(k)), logo = E.tint('logo', '#ffffff');
           const ring = prog(t, tIn + .15, tIn + .85);
           if (ring > 0 && ring < 1) { ctx.save(); ctx.strokeStyle = `rgba(185,255,0,${.8 * (1 - ring)})`; ctx.lineWidth = 14 * (1 - ring) + 2; ctx.beginPath(); ctx.arc(960, 450, 200 + ring * 650, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
-          if (logo) { const w = 1100 * s, h = w * 249 / 960; ctx.save(); ctx.globalAlpha = clamp(k * 3); ctx.shadowColor = 'rgba(139,92,246,.9)'; ctx.shadowBlur = 60; ctx.drawImage(logo, 960 - w / 2, 450 - h / 2, w, h); ctx.restore(); }
-          // 「一站式」：三色光带从左扫到右，托住 logo
+          if (logo) { const lw = 1100 * s, lh = lw * 249 / 960; ctx.save(); ctx.globalAlpha = clamp(k * 3); ctx.shadowColor = 'rgba(139,92,246,.9)'; ctx.shadowBlur = 60; ctx.drawImage(logo, 960 - lw / 2, 450 - lh / 2, lw, lh); ctx.restore(); }
           const u = ease.out(prog(t, tOne, tOne + .5));
           if (u > 0) {
             const W = 1000 * u, gr = ctx.createLinearGradient(460, 0, 1460, 0);
@@ -680,21 +586,21 @@
             ctx.save(); ctx.shadowColor = '#b9ff00'; ctx.shadowBlur = 24; ctx.fillStyle = gr; D.rr(ctx, 460, 640, W, 16, 8); ctx.fill(); ctx.restore();
           }
         }
-        pip(ctx, t, E, t0 + .05, t1);
+        pip(ctx, t, E, t0, t1);
       },
     });
   }
 
-  // 45  136.15–138.65 「这才是专业AI办公该有的样子」真人
+  // 31  136.15–138.65 「这才是专业AI办公该有的样子」真人
   scenes.push(anchorFull(T(135.20), T(137.70)));
 
-  // 46  138.65–141.25 「这个工具网页端和桌面端都能用」浏览器 + 桌面窗口，名字随口播弹出
+  // 46  138.65–141.25（10-20：左边网页端换成阿亮给的网页版截图） 「这个工具网页端和桌面端都能用」浏览器 + 桌面窗口，名字随口播弹出
   {
     const t0 = T(137.70), t1 = T(140.30), tW = T(138.48), tD = T(139.08);
     scenes.push({
       t0, t1, draw(ctx, t, E) {
         D.bg(ctx, t);
-        const im = E.image('k_home'), w = 800, h = 450;
+        const w = 800, h = 450;
         [[540, tW, '网页端', true], [1380, tD, '桌面端', false]].forEach(([cx, ta, name, browser], i) => {
           const k = ease.out(prog(t, t0 + i * .12, t0 + i * .12 + .4)); if (k <= 0) return;
           const x = cx - w / 2, y = 150 + (1 - k) * 80, top = browser ? 46 : 0;
@@ -705,7 +611,8 @@
             [['#ff5f57', 0], ['#febc2e', 1], ['#28c840', 2]].forEach(([c, j]) => { ctx.beginPath(); ctx.arc(x + 26 + j * 22, y - 23, 7, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); });
             D.rr(ctx, x + 110, y - 36, w - 140, 26, 13); ctx.fillStyle = '#fff'; ctx.fill();
           }
-          ctx.save(); D.rr(ctx, x, y, w, h, browser ? 0 : 16); ctx.clip(); if (im) ctx.drawImage(im, 0, 0, 2560, 1440, x, y, w, h); ctx.restore();
+          const im = E.image(browser ? 'k_web' : 'k_home');   // 网页端：阿亮给的网页版截图（10-20）
+          ctx.save(); D.rr(ctx, x, y, w, h, browser ? 0 : 16); ctx.clip(); if (im) { const k = Math.max(w / im.width, h / im.height); ctx.drawImage(im, x + (w - im.width * k) / 2, y, im.width * k, im.height * k); } ctx.restore();
           D.rr(ctx, x, y - top, w, h + top, 16); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.stroke();
           ctx.restore();
           // 名字徽章
@@ -724,7 +631,7 @@
 
   // 47  141.25–147.0 「好了，以上就是本期视频的全部内容……我是阿亮，我们下期再见」真人，最后淡出
   {
-    const A = anchorFull(T(140.30), DUR);
+    const A = anchorFull(T(140.30), DUR, { xout: 0 });
     scenes.push({ t0: A.t0, t1: A.t1, kind: 'anchor', close: false, fadeOut: .7, draw(ctx, t, E) { A.draw(ctx, t, E); const f = prog(t, DUR - .7, DUR); if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, 1920, 1080); } } });
   }
 
@@ -748,51 +655,32 @@
   const env5 = [[SEG5 - .2, LOW], [T(145.75), LOW], [T(145.75) + .3, .5], [DUR - .8, .5], [DUR, 0]];
   audio.push({ asset: 'music5', at: SEG5 - .2, from: 0, dur: DUR - SEG5 + .2, gain: 1, fadeIn: .5, fadeOut: .8, env: env5 });
   const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
-  // 转场音：峰值对齐切点（whoosh 峰在 0.71 秒）
-  sfx('whoosh', 1.95 - .62, .5); sfx('whoosh', 4.93 - .62, .45); sfx('swish', 11.99 - .7, .45);
+  // 转场：每次换画面一个轻「嗖」（峰值 0.7 秒对齐切点）；章节卡、logo 有自己的重击
+  const OWN = [18.87, CH1, 66.45, 92.0];   // logo、章节卡：有自己的蓄力 + 重击
+  scenes.forEach((sc, i) => { if (i && !OWN.some(x => Math.abs(x - sc.t0) < .02)) sfx('swish', sc.t0 - .7, .28); });
+  // 录屏里的马克笔 / 框选：马克笔沙沙声、框选轻「啵」；同一录屏里跳一段（软切）也给一个轻「嗖」
+  scenes.filter(sc => sc.kind === 'full').forEach(sc => {
+    for (const m of sc.o.marks || []) if (m.at < sc.t1) m.kind === 'box' ? sfx('pop', m.at, .35) : sfx('scribble', m.at, .3);
+    for (const c of sc.o.cuts || []) sfx('swish', c - .7, .22);
+  });
+  // 第 1 段动画
   sfx('pop', 12.02, .5); sfx('pop', 12.2, .45); sfx('pop', 12.37, .45); sfx('pop', 12.53, .45);
   sfx('scribble', T(13.85), .55); sfx('pop', T(15.55), .7);
   sfx('rise', 18.87 + .2 - 1.43, .7);                     // 蓄力，结尾对齐 logo
   sfx('thud', 18.87 - .17 + .2, .9); sfx('dong', 18.87 - .21 + .2, .55); sfx('shine', 19.25, .5);
-  sfx('whoosh', 19.95 - .62, .45); [T(20.75), T(21.35), T(21.95)].forEach(x => sfx('swish', x - .8, .35));
-  sfx('whoosh', 25.69 - .62, .45);
   NAV.forEach(([, , ta]) => sfx('pop', ta, .55));
-  // 每个高亮的轻响
-  [T(6.50), T(7.02), T(7.50)].forEach(x => sfx('shine', x, .18));
-  // 第 2 段
-  sfx('rise', CH1_HIT - 1.43, .6); sfx('thud', CH1_HIT - .17, .85); sfx('dong', CH1_HIT - .21, .45);
-  sfx('whoosh', 31.05 - .62, .45); sfx('shine', T(31.74), .2); sfx('shine', T(33.70), .2);
-  sfx('swish', T(39.62) - .7, .4); [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(39.62) + i * .07 + .1, .3));
+  // 章节卡
+  for (const H of [CH1_HIT, CH2_HIT, CH3_HIT]) { sfx('rise', H - 1.43, .6); sfx('thud', H - .17, .85); sfx('dong', H - .21, .45); }
+  // 第 2 段：散乱结果 + 放大镜
+  [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(39.62) + i * .07 + .1, .3));
   sfx('swish', T(41.58) - .55, .4); sfx('swish', T(42.24) - .55, .4);
   [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(43.38) + .1 + i * .17, .4));
-  sfx('whoosh', 45.47 - .62, .45); sfx('pop', T(46.39) + .2, .55); sfx('pop', T(46.87) + .2, .55); sfx('shine', T(47.83), .35);
-  sfx('whoosh', T(48.62) - .62, .45); sfx('shine', T(48.75), .2); sfx('shine', T(49.25), .2);
-  [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(51.65) + i * .2, .3));
-  sfx('whoosh', T(55.70) - .62, .45); sfx('shine', T(57.72), .25);
-  sfx('whoosh', T(59.00) - .62, .4); sfx('shine', T(59.38), .2); sfx('pop', T(62.60), .45);
-  sfx('swish', T(64.20) - .7, .4); sfx('pop', T(64.50), .5);
-  // 第 3 段
-  sfx('rise', CH2_HIT - 1.43, .6); sfx('thud', CH2_HIT - .17, .85); sfx('dong', CH2_HIT - .21, .45);
-  sfx('whoosh', T(69.30) - .62, .45); sfx('pop', T(69.30) + .75, .35);
-  sfx('whoosh', T(71.74) - .62, .4); [T(72.00), T(72.95), T(75.00)].forEach(x => sfx('shine', x, .2));
-  sfx('whoosh', T(79.62) - .62, .45);
-  sfx('swish', T(83.25) - .7, .4); [0, 1, 2, 3].forEach(i => sfx('pop', T(83.60) + i * .32 + .15, .45));
-  sfx('whoosh', T(85.75) - .62, .45); sfx('pop', T(86.95), .45); sfx('pop', T(88.85), .45); sfx('shine', T(90.0), .3);
-  // 第 4 段
-  sfx('rise', CH3_HIT - 1.43, .6); sfx('thud', CH3_HIT - .17, .85); sfx('dong', CH3_HIT - .21, .45);
-  sfx('whoosh', 93.20 - .62, .45);
-  sfx('whoosh', T(94.60) - .62, .4); sfx('pop', T(95.47), .45);
-  sfx('whoosh', T(98.45) - .62, .4); sfx('shine', T(99.17), .25);
-  sfx('swish', T(100.85) - .7, .35); [101.29, 101.45, 101.61].forEach(v => sfx('pop', T(v), .4));
-  sfx('whoosh', T(104.20) - .62, .4);
-  sfx('whoosh', T(109.80) - .62, .4);
-  sfx('swish', T(112.16) - .7, .3); sfx('whoosh', T(114.22) - .62, .4); sfx('whoosh', T(115.27) - .62, .4); sfx('swish', T(117.73) - .7, .3);
-  // 第 5 段
-  sfx('whoosh', T(123.15) - .62, .4); sfx('pop', T(123.25), .5); sfx('swish', T(124.45) - .5, .3);
+  // 第 5 段：对话气泡 → 三步链；三张成果收拢进 logo；多端
+  sfx('pop', T(123.25), .5); sfx('swish', T(124.45) - .5, .3);
   [124.75, 125.29, 125.77].forEach(v => sfx('pop', T(v), .45));
-  sfx('whoosh', T(128.75) - .62, .45); sfx('swish', T(129.55) - .7, .35); sfx('swish', T(130.80) - .7, .35);
-  sfx('whoosh', T(132.45) - .62, .4); sfx('thud', T(133.16) - .17, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
-  sfx('whoosh', T(137.70) - .62, .4); sfx('pop', T(138.48), .5); sfx('pop', T(139.08), .5);
+  [128.83, 129.79, 130.87].forEach(v => sfx('pop', T(v) + .1, .45));
+  sfx('swish', T(133.16) - .6, .35); sfx('thud', T(133.16) - .17, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
+  sfx('pop', T(138.48), .5); sfx('pop', T(139.08), .5);
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -801,26 +689,14 @@
 
   const assets = {
     anchor: { type: 'video', src: { mp4: A + 'anchor.mp4', webm: A + 'anchor.webm' } },
-    c08: { type: 'video', src: { mp4: A + 'c08.mp4', webm: A + 'c08.webm' } },
-    ref: { type: 'image', src: A + 'ref.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
+    // 原始录屏（1080p 全屏版，prep_full.sh 打码 + 转码）
+    r01: { type: 'video', src: { mp4: A + 'r01.mp4', webm: A + 'r01.webm' } }, r02a: { type: 'video', src: { mp4: A + 'r02a.mp4', webm: A + 'r02a.webm' } }, r02b: { type: 'video', src: { mp4: A + 'r02b.mp4', webm: A + 'r02b.webm' } },
+    r03: { type: 'video', src: { mp4: A + 'r03.mp4', webm: A + 'r03.webm' } }, r04: { type: 'video', src: { mp4: A + 'r04.mp4', webm: A + 'r04.webm' } }, r05: { type: 'video', src: { mp4: A + 'r05.mp4', webm: A + 'r05.webm' } },
+    r08: { type: 'video', src: { mp4: A + 'r08.mp4', webm: A + 'r08.webm' } }, c07: { type: 'video', src: { mp4: A + 'c07.mp4', webm: A + 'c07.webm' } },
     lit1: { type: 'image', src: A + 'lit1.jpg' }, lit2: { type: 'image', src: A + 'lit2.jpg' },
     lit3: { type: 'image', src: A + 'lit3.jpg' }, lit4: { type: 'image', src: A + 'lit4.jpg' },
-    c01: { type: 'video', src: { mp4: A + 'c01.mp4', webm: A + 'c01.webm' } },
-    prompt: { type: 'image', src: A + 'prompt.jpg' }, cite: { type: 'image', src: A + 'cite.jpg' },
-    sortp: { type: 'image', src: A + 'sortp.jpg' }, sort0: { type: 'image', src: A + 'sort0.jpg' },
-    c03e: { type: 'video', src: { mp4: A + 'c03e.mp4', webm: A + 'c03e.webm' } },
-    c03s: { type: 'video', src: { mp4: A + 'c03s.mp4', webm: A + 'c03s.webm' } },
-    rp_prompt: { type: 'image', src: A + 'rp_prompt.jpg' }, rp_refs: { type: 'image', src: A + 'rp_refs.jpg' },
-    rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, rp_h2: { type: 'image', src: A + 'rp_h2.jpg' },
-    rp_h3: { type: 'image', src: A + 'rp_h3.jpg' }, rp_h4: { type: 'image', src: A + 'rp_h4.jpg' },
-    c04a: { type: 'video', src: { mp4: A + 'c04a.mp4', webm: A + 'c04a.webm' } },
-    c08c: { type: 'video', src: { mp4: A + 'c08c.mp4', webm: A + 'c08c.webm' } },
-    c05a: { type: 'video', src: { mp4: A + 'c05a.mp4', webm: A + 'c05a.webm' } },
-    c05b: { type: 'video', src: { mp4: A + 'c05b.mp4', webm: A + 'c05b.webm' } },
-    c06r: { type: 'video', src: { mp4: A + 'c06r.mp4', webm: A + 'c06r.webm' } },
-    c07a: { type: 'video', src: { mp4: A + 'c07a.mp4', webm: A + 'c07a.webm' } },
-    c07b: { type: 'video', src: { mp4: A + 'c07b.mp4', webm: A + 'c07b.webm' } },
-    k_file: { type: 'image', src: A + 'k_file.jpg' }, k_home: { type: 'image', src: A + 'k_home.jpg' },
+    sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
+    k_home: { type: 'image', src: A + 'k_home.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
     logo: { type: 'image', src: A + 'logo.png' },
     voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' }, music5: { type: 'audio', src: A + 'music5.mp3' },
   };
@@ -831,9 +707,8 @@
     fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
     assets, scenes, overlay, audio, silence: A + 'silence.mp3',
     // 自查用：关键时间点
-    checks: [123.0, 124.6, 126.0, 127.6, 129.0, 130.2, 131.2, 132.8, 134.0, 135.6, 137.0, 139.2, 140.6, 143.0, 146.8],
+    checks: [1.0, 2.6, 4.6, 6.0, 7.6, 13.0, 15.0, 33.8, 47.0, 51.0, 53.0, 58.2, 60.8, 65.4, 71.5, 74.5, 84.0, 90.0, 94.3, 97.5, 99.5, 103.4, 106.6, 111.6, 113.8, 118.0, 131.5, 135.0, 139.5],
     sections: [[0, '第 1 段 · 开头'], [SEG2, '第 2 段 · 查文献'], [SEG3, '第 3 段 · 出报告'], [SEG4, '第 4 段 · 做课件'], [SEG5, '第 5 段 · 结尾']],
     SUBS, T, V,
-    jy: { anchorV, anchorGeom, pipSrc, PIP, VOICE, ANCHOR_W, ANCHOR_H },   // 导出剪映工程用（剪辑工程/jy_probe.js）
   };
 })();

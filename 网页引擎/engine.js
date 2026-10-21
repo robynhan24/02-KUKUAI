@@ -285,21 +285,14 @@
   /* ---------- 通用画法 ---------- */
   const D = {
     rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); },
-    /** 有层次的深色背景：网格 + 两团慢慢飘的光 + 暗角（不用纯黑平涂） */
+    /** 背景：黑底 + 淡淡的白色网格（阿亮 10-20：所有黑色背景都换成网格，线条淡显） */
     bg(ctx, t, o = {}) {
-      const W = 1920, H = 1080, c1 = o.c1 || 'rgba(124,58,237,.38)', c2 = o.c2 || 'rgba(35,136,255,.30)';
-      ctx.fillStyle = o.base || '#0a0a12'; ctx.fillRect(0, 0, W, H);
-      const g1 = ctx.createRadialGradient(420 + 80 * Math.sin(t * .4), 160 + 40 * Math.cos(t * .3), 0, 420, 160, 900);
-      g1.addColorStop(0, c1); g1.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H);
-      const g2 = ctx.createRadialGradient(1560 - 90 * Math.sin(t * .35), 900, 0, 1560, 900, 950);
-      g2.addColorStop(0, c2); g2.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = 'rgba(255,255,255,.055)'; ctx.lineWidth = 1; ctx.beginPath();
-      const s = 64, off = (t * 12) % s;
-      for (let x = -s + off; x < W + s; x += s) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for (let y = -s + off; y < H + s; y += s) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      const W = 1920, H = 1080, s = 112;
+      ctx.fillStyle = '#030304'; ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = 'rgba(255,255,255,.11)'; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let x = (W / 2) % s; x < W; x += s) { ctx.moveTo(Math.round(x) + .5, 0); ctx.lineTo(Math.round(x) + .5, H); }
+      for (let y = (H / 2) % s; y < H; y += s) { ctx.moveTo(0, Math.round(y) + .5); ctx.lineTo(W, Math.round(y) + .5); }
       ctx.stroke();
-      const v = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * 1.05);
-      v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
     },
     /** 软件窗口：圆角 + 阴影 + 细边；src 是素材里要显示的区域 [sx,sy,sw,sh] */
     win(ctx, el, src, x, y, w, h, o = {}) {
@@ -359,6 +352,50 @@
         } else {
           c.save(); c.fillStyle = 'rgba(245,223,39,.45)'; D.rr(c, rx - 4, ry, (rw + 8) * p, rh, 6); c.fill(); c.restore();
         }
+      }
+    },
+    /** 全屏录屏的镜头：区域 r → {cx, cy, z}；r 为 null 时是全画面 */
+    camOf(r, iw, ih, pad = .86) {
+      if (!r) return { cx: iw / 2, cy: ih / 2, z: 1 };
+      const rw = r[2] - r[0], rh = r[3] - r[1], z = Math.max(1, Math.min(iw / rw, ih / rh) * pad);
+      const vw = iw / z, vh = ih / z;
+      return { cx: clamp((r[0] + r[2]) / 2, vw / 2, iw - vw / 2), cy: clamp((r[1] + r[3]) / 2, vh / 2, ih - vh / 2), z };
+    },
+    /** 镜头在 t 时的状态：cam = [[时间, 区域或 null], ...]，每次推拉用 dur 秒（缓动） */
+    camAt(cam, t, iw, ih, dur = .7) {
+      let cur = D.camOf(null, iw, ih);
+      for (let i = 0; i < (cam || []).length; i++) {
+        const [ta, r] = cam[i]; if (t < ta) break;
+        const nxt = D.camOf(r, iw, ih), k = ease.inOut(prog(t, ta, ta + dur));
+        cur = { cx: lerp(cur.cx, nxt.cx, k), cy: lerp(cur.cy, nxt.cy, k), z: Math.exp(lerp(Math.log(cur.z), Math.log(nxt.z), k)) };
+      }
+      return cur;
+    },
+    /** 全屏录屏（铺满 1920×1080）。el 的画面对应坐标空间 iw×ih（原始录屏像素）；cam 镜头推拉；marks 马克笔 / 框选 */
+    recFull(ctx, t, el, iw, ih, o = {}) {
+      const c = D.camAt(o.cam, t, iw, ih), k0 = Math.max(1920 / iw, 1080 / ih), sc = k0 * c.z;
+      let dx = 960 - c.cx * sc, dy = 540 - c.cy * sc;
+      dx = iw * sc >= 1920 ? clamp(dx, 1920 - iw * sc, 0) : (1920 - iw * sc) / 2;
+      dy = ih * sc >= 1080 ? clamp(dy, 1080 - ih * sc, 0) : (1080 - ih * sc) / 2;
+      if (el) {
+        const vw = el.videoWidth || el.naturalWidth || el.width, vh = el.videoHeight || el.naturalHeight || el.height;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(el, 0, 0, vw, vh, dx, dy, iw * sc, ih * sc);
+      }
+      for (const m of o.marks || []) {
+        if (t < m.at || (m.end != null && t >= m.end)) continue;
+        const p = ease.out(prog(t, m.at, m.at + (m.dur || .35))), fo = m.end != null ? 1 - prog(t, m.end - .2, m.end) : 1;
+        const x = dx + m.r[0] * sc, y = dy + m.r[1] * sc, w = (m.r[2] - m.r[0]) * sc, h = (m.r[3] - m.r[1]) * sc;
+        ctx.save(); ctx.globalAlpha = fo;
+        if (m.kind === 'box') {   // 框选：橙红圆角框，从大收到位
+          const g = 1 + (1 - p) * .12; ctx.globalAlpha = fo * p;
+          ctx.lineWidth = 6; ctx.strokeStyle = '#ff5a1f'; ctx.shadowColor = 'rgba(255,90,31,.55)'; ctx.shadowBlur = 16;
+          D.rr(ctx, x + w / 2 - (w / 2 + 10) * g, y + h / 2 - (h / 2 + 8) * g, (w + 20) * g, (h + 16) * g, 12); ctx.stroke();
+        } else {                   // 马克笔描色：亮黄，正片叠底，从左往右涂过去
+          ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(255,224,40,.85)';
+          D.rr(ctx, x - 4, y + h * .08, (w + 8) * p, h * .84, 5); ctx.fill();
+        }
+        ctx.restore();
       }
     },
     /** 放大后的局部在画面上的位置 */
@@ -456,16 +493,16 @@
         ctx.save(); ctx.globalAlpha = clamp(e * 1.6); D.rr(ctx, px, py, pw, ph, 16); ctx.lineWidth = 5; ctx.strokeStyle = '#ffaa42'; ctx.shadowColor = 'rgba(255,170,66,.7)'; ctx.shadowBlur = 24; ctx.stroke(); ctx.restore();
       }
     },
-    /** 底部字幕：白色粗黑体 + 深色半透明底 */
+    /** 底部字幕：得意黑（SmileySans），白字 + 深色描边和阴影，不加底色（阿亮 10-20） */
     subtitle(ctx, s, alpha = 1, o = {}) {
       if (!s) return;
       ctx.save(); ctx.globalAlpha = alpha;
-      const size = o.size || 54, y = o.y || 1000;
-      ctx.font = `800 ${size}px "KSub","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif`;
-      const w = ctx.measureText(s).width, px = 26, h = size + 26;
-      D.rr(ctx, 960 - w / 2 - px, y - h / 2, w + px * 2, h, 12); ctx.fillStyle = 'rgba(0,0,0,.62)'; ctx.fill();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
-      ctx.fillText(s, 960, y + size * .04);
+      const size = o.size || 62, y = o.y || 1004;
+      ctx.font = `${size}px "KSub","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
+      ctx.lineWidth = 9; ctx.strokeStyle = 'rgba(12,12,16,.92)'; ctx.strokeText(s, 960, y);
+      ctx.shadowColor = 'transparent'; ctx.fillStyle = '#fff'; ctx.fillText(s, 960, y);
       ctx.restore();
     },
   };
