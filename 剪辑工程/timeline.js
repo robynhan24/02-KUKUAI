@@ -587,11 +587,11 @@
 
   // 25  111.37–115.47 「还能沉淀成个人专属Skill，后续可以一键复用」沉淀技能录屏：贴入指令 → 软切到「已成功创建并注册」（推近描）→ 软切到我的技能 → 使用 → 输入框出现模板（框）
   {
-    const t0 = T(109.80), c1 = t0 + 1.1, c2 = T(112.16);
+    const t0 = T(109.80), c1 = t0 + 1.1, c2 = c1 + .9;   // c2：点「在对话中使用」前一刻（13.3），13.7 模板出现，13.85 定格
     scenes.push(fullScene(t0, T(114.22), {
-      asset: 'r05', iw: 2560, ih: 1440, src: [[t0, 1.2, 1], [c1, 5.2, 0], [c2, 12.6, 1.15]], cuts: [c1, c2],
-      cam: [[t0, null], [c1, [500, 560, 1800, 900], 0], [c2, null, 0]],
-      marks: [{ r: [552, 633, 1417, 675], at: c1 + .55, end: c2, dur: .5 }, { r: [596, 700, 875, 754], at: c2 + 1.52, kind: 'box', lw: 4 }],
+      asset: 'r05', iw: 2560, ih: 1440, src: [[t0, 1.2, 1], [c1, 5.2, 0], [c2, 13.3, 1], [c2 + .55, 13.85, 0]], cuts: [c1, c2],
+      cam: [[t0, null], [c1, [500, 560, 1800, 900], 0], [c2, null, 0], [c2 + .55, [560, 400, 2480, 1050], .6]],
+      marks: [{ r: [552, 633, 1417, 675], at: c1 + .55, end: c2, dur: .5 }, { r: [596, 700, 875, 754], at: c2 + .7, kind: 'box', lw: 4 }],
     }));
   }
 
@@ -764,7 +764,7 @@
 
   /* ---------- 音频 ---------- */
   const audio = [];
-  VOICE.forEach(([a, b, t]) => audio.push({ asset: 'voice', at: t, from: a, dur: b - a, gain: 1, fadeIn: .02, fadeOut: .03 }));
+  VOICE.forEach(([a, b, t]) => audio.push({ asset: 'voice', at: t, from: a, dur: b - a, gain: .94, fadeIn: .02, fadeOut: .03 }));
   // 阿亮 10-21：去掉配乐和音效，只保留口播
 
   /* ---------- 字幕叠加 ---------- */
@@ -783,7 +783,7 @@
     sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
     k_home: { type: 'image', src: A + 'k_home.jpg' }, ph_a: { type: 'image', src: A + 'ph_a.png' }, ph_b: { type: 'image', src: A + 'ph_b.png' }, ph_c: { type: 'image', src: A + 'ph_c.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
     logo: { type: 'image', src: A + 'logo.png' },
-    voice: { type: 'audio', src: A + 'voice.mp3' },
+    voice: { type: 'audio', src: A + 'voice.mp3' }, bgm: { type: 'audio', src: A + 'bgm.mp3' },
     m1: { type: 'video', src: { mp4: A + 'm1.mp4', webm: A + 'm1.webm' } }, m2: { type: 'video', src: { mp4: A + 'm2.mp4', webm: A + 'm2.webm' } }, m3: { type: 'video', src: { mp4: A + 'm3.mp4', webm: A + 'm3.webm' } },
   };
   // 抠好背景的 3D 空镜（key_3d.py，20 帧/秒）
@@ -799,6 +799,23 @@
     .filter(sc => sc.t1 - sc.t0 > 1e-3);
   const audioOut = audio.map(a => Object.assign({}, a, { at: ext(a.at) }));
   const overlayOut = (ctx, t, E) => overlay(ctx, int(t), E);
+
+  /* ---------- 配乐（阿亮 10-21：萨莉.mp3） ----------
+   * 99 BPM，一小节 2.4245 秒。曲子 138.8 秒、片子 146.2 秒：在 106.475 秒那个小节线跳回 4 小节（96.777，两处起音和响度几乎一样），
+   * 曲子自己的结尾正好落在最后一句口播之后。说话时压到 0.13（比口播低约 17 dB）。
+   * 章节卡：配乐 0.3 秒内退下去，换成曲子 72.53 秒那一小节（安静后进入大段落的那一下），重拍对准章节卡亮起，结束时再慢慢接回配乐。 */
+  {
+    const LO = .13, BAR0 = 72.532, SPLICE = 106.475, BACK = 96.777, OFF = .20;
+    const env = [[0, 0], [.6, LO]];
+    for (const [c0, hit] of [[29.85, 30.05], [SEG3, 66.65], [SEG4, 92.2]]) {
+      const a = ext(c0), h = ext(hit), b = h + 1.0;
+      env.push([a - .25, LO], [h - .1, 0], [b, 0], [b + .5, LO]);
+      audioOut.push({ asset: 'bgm', at: h - .15, from: BAR0 - .15, dur: 1.75, gain: .55, fadeIn: .03, fadeOut: .55 });
+    }
+    env.push([ext(DUR) - .6, LO], [ext(DUR) - .2, .22], [ext(DUR), 0]);
+    audioOut.push({ asset: 'bgm', at: OFF, from: 0, dur: SPLICE + .12, gain: 1, fadeIn: .3, fadeOut: .25, env });
+    audioOut.push({ asset: 'bgm', at: OFF + SPLICE - .12, from: BACK - .12, dur: 138.7 - BACK, gain: 1, fadeIn: .25, fadeOut: .6, env });
+  }
 
   window.PROJECT = {
     title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: ext(DUR),
