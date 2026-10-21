@@ -344,7 +344,7 @@
         if (im) { ctx.save(); ctx.globalAlpha = clamp(k * 1.3); ctx.drawImage(im, x, y, w, h); ctx.restore(); }
         // 「无从下手」：问号弹出
         const q = ease.back(prog(t, T(15.55), T(15.55) + .35));
-        if (q > 0) { ctx.save(); ctx.translate(1765, 615); ctx.scale(q, q); ctx.rotate(Math.sin(t * 5) * .04); D.text(ctx, '？', 0, 0, { size: 560, color: '#f5df27', stroke: '#111', strokeW: 20 }); ctx.restore(); }
+        if (q > 0) { ctx.save(); ctx.translate(1765, 615); ctx.scale(q, q); ctx.rotate(Math.sin(t * 5) * .04); D.text(ctx, '？', 0, 0, { font: 'title', size: 560, color: '#f5df27', stroke: '#111', strokeW: 20 }); ctx.restore(); }
         pip(ctx, t, E, t0, t1);
       },
     });
@@ -377,22 +377,23 @@
   const NAV = [['查文献', '#2388FF', T(25.80)], ['出报告', '#F5DF27', T(26.25)], ['做课件', '#39C872', T(26.65)]];
   /** 导航卡：reveal[i] = 名字揭晓时间（-1 = 已揭晓）；focus = 当前章节（其余压暗），-1 = 不压暗 */
   function navDraw(ctx, t, t0, reveal, focus, o = {}) {
-    const bw = 900, bh = 172, gap = 54, top = 540 - (3 * bh + 2 * gap) / 2 - 40;
+    // 阿亮 10-21：整体放大到画面中间约 1150×770；字换成思源黑体 Medium，不再用很粗的标题黑
+    const bw = 1100, bh = 212, gap = 70, CX = 1004, top = 115;
     NAV.forEach(([name, col], i) => {
-      const ta = reveal[i], y = top + i * (bh + gap), x = 1000 - bw / 2;
+      const ta = reveal[i], y = top + i * (bh + gap), x = CX - bw / 2;
       const inK = ease.out(prog(t, t0 + i * .07, t0 + i * .07 + .3)), on = ta < 0 ? 1 : ease.out(prog(t, ta, ta + .25));
       const dim = focus < 0 || focus === i ? 1 : .3;
-      const pop = focus === i ? 1 + .06 * ease.back(prog(t, o.hit || t0, (o.hit || t0) + .3)) : 1;
-      ctx.save(); ctx.globalAlpha = inK * dim; ctx.translate(1000 + (1 - inK) * 120, y + bh / 2); ctx.scale(pop, pop); ctx.translate(-1000, -(y + bh / 2));
-      if (focus === i) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 50; D.rr(ctx, x, y, bw, bh, 22); ctx.fillStyle = col; ctx.globalAlpha = .35; ctx.fill(); ctx.restore(); }
-      else if (on > 0) { ctx.save(); ctx.globalAlpha = inK * dim * on * .22; D.rr(ctx, x, y, bw, bh, 22); ctx.fillStyle = col; ctx.fill(); ctx.restore(); }
-      D.rr(ctx, x, y, bw, bh, 22); ctx.lineWidth = 7; ctx.strokeStyle = col; ctx.globalAlpha = inK * dim * lerp(.55, 1, on); ctx.stroke();
+      const pop = focus === i ? 1 + .05 * ease.back(prog(t, o.hit || t0, (o.hit || t0) + .3)) : 1;
+      ctx.save(); ctx.globalAlpha = inK * dim; ctx.translate(CX + (1 - inK) * 120, y + bh / 2); ctx.scale(pop, pop); ctx.translate(-CX, -(y + bh / 2));
+      if (focus === i) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 50; D.rr(ctx, x, y, bw, bh, 26); ctx.fillStyle = col; ctx.globalAlpha = .3; ctx.fill(); ctx.restore(); }
+      else if (on > 0) { ctx.save(); ctx.globalAlpha = inK * dim * on * .2; D.rr(ctx, x, y, bw, bh, 26); ctx.fillStyle = col; ctx.fill(); ctx.restore(); }
+      D.rr(ctx, x, y, bw, bh, 26); ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.globalAlpha = inK * dim * lerp(.55, 1, on); ctx.stroke();
       ctx.globalAlpha = inK * dim;
-      ctx.beginPath(); ctx.arc(x + 110, y + bh / 2, 54, 0, Math.PI * 2); ctx.lineWidth = 9; ctx.strokeStyle = col; ctx.stroke();
-      D.text(ctx, String(i + 1), x + 110, y + bh / 2 + 4, { size: 76, color: col, shadow: false });
-      const label = on > .5 ? name : '？？？';
-      ctx.save(); const sc = on > .5 && ta >= 0 ? lerp(1.25, 1, ease.out(prog(t, ta + .12, ta + .35))) : 1; ctx.translate(x + 530, y + bh / 2 + 4); ctx.scale(sc, sc);
-      D.text(ctx, label, 0, 0, { size: 96, color: '#fff' }); ctx.restore();
+      ctx.beginPath(); ctx.arc(x + 135, y + bh / 2, 64, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.stroke();
+      D.text(ctx, String(i + 1), x + 135, y + bh / 2 + 2, { size: 80, color: col, shadow: false });
+      const label = on > .5 ? name : '？ ？ ？';
+      ctx.save(); const sc = on > .5 && ta >= 0 ? lerp(1.2, 1, ease.out(prog(t, ta + .12, ta + .35))) : 1; ctx.translate(x + 630, y + bh / 2 + 2); ctx.scale(sc, sc);
+      D.text(ctx, label, 0, 0, { size: 112, color: '#fff', blur: 16 }); ctx.restore();
       ctx.restore();
     });
   }
@@ -445,7 +446,7 @@
           // 放大镜查到这张：打问号
           const hit = tC + .1 + i * .17;
           const q = ease.back(prog(t, hit, hit + .2));
-          if (q > 0) { ctx.save(); ctx.scale(q, q); D.text(ctx, '？', 0, 0, { size: 230, color: '#ff4d5e', stroke: '#fff', strokeW: 14 }); ctx.restore(); }
+          if (q > 0) { ctx.save(); ctx.scale(q, q); D.text(ctx, '？', 0, 0, { font: 'title', size: 230, color: '#ff4d5e', stroke: '#fff', strokeW: 14 }); ctx.restore(); }
           ctx.restore();
         });
         // 放大镜
@@ -494,7 +495,7 @@
     const LC = [['lc1', 312, '01', '概念定义', '#2388FF'], ['lc2', 314, '02', '几何本质', '#8b5cf6'], ['lc3', 252, '03', '教学路径', '#F5DF27'], ['lc4', 314, '04', '实践效果', '#39C872']];
     const CW = 1150, CK = CW / 1964;
     const badge = (ctx, x, y, num, name, col, a = 1) => {
-      ctx.save(); ctx.globalAlpha *= a; ctx.font = '700 30px "KTitle", "PingFang SC", sans-serif';
+      ctx.save(); ctx.globalAlpha *= a; ctx.font = '30px "KCard", "PingFang SC", sans-serif';
       const tw = ctx.measureText(num + '  ' + name).width + 44;
       ctx.shadowColor = col; ctx.shadowBlur = 16; D.rr(ctx, x, y, tw, 46, 23); ctx.fillStyle = col; ctx.fill(); ctx.shadowBlur = 0;
       D.text(ctx, num + '  ' + name, x + tw / 2, y + 25, { size: 30, color: col === '#F5DF27' ? '#15151c' : '#fff', shadow: false });
@@ -734,7 +735,7 @@
           ctx.save(); D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.clip(); ctx.drawImage(im, c.x, c.y, c.w, h); ctx.restore();
           ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.55)'; D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.stroke();
           if (c.label) {   // 卡片上方的小标签
-            ctx.font = '600 34px "KTitle", "PingFang SC", sans-serif'; const tw = ctx.measureText(c.label).width + 56;
+            ctx.font = '34px "KCard", "PingFang SC", sans-serif'; const tw = ctx.measureText(c.label).width + 56;
             D.rr(ctx, c.x, c.y - 66, tw, 52, 26); ctx.fillStyle = c.col; ctx.fill();
             D.text(ctx, c.label, c.x + tw / 2, c.y - 38, { size: 34, color: '#fff', shadow: false });
           }
@@ -786,7 +787,7 @@
           ctx.shadowColor = 'rgba(139,92,246,.8)'; ctx.shadowBlur = 50;
           D.rr(ctx, -150, -110, 300, 200, 50); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
           ctx.beginPath(); ctx.moveTo(-70, 88); ctx.lineTo(-110, 140); ctx.lineTo(-20, 88); ctx.fill();
-          D.text(ctx, '？', 0, -6, { size: 170, color: '#7c3aed', shadow: false });
+          D.text(ctx, '？', 0, -6, { font: 'title', size: 170, color: '#7c3aed', shadow: false });
           ctx.restore();
         }
         stepRow(ctx, t, AT, { cx: 1130, cw: 330, gap: 86 });
@@ -931,7 +932,7 @@
 
   window.PROJECT = {
     title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: ext(DUR),
-    fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }],
+    fonts: [{ family: 'KTitle', src: A + 'title.woff' }, { family: 'KSub', src: A + 'sub.woff' }, { family: 'KCard', src: A + 'card.woff' }],
     assets, scenes: scenesOut, overlay: overlayOut, audio: audioOut, silence: A + 'silence.mp3',
     // 自查用：关键时间点
     checks: [1.0, 2.6, 4.6, 6.0, 7.6, 13.0, 15.0, 33.8, 47.0, 51.0, 53.0, 58.2, 60.8, 65.4, 71.5, 74.5, 84.0, 90.0, 94.3, 97.5, 99.5, 103.4, 106.6, 111.6, 113.8, 118.0, 131.5, 135.0, 139.5],

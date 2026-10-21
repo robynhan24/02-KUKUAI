@@ -20,3 +20,5 @@ A = os.path.join(here, 'assets')
 make(os.path.join(WB, '字体/优设标题黑.ttf'), os.path.join(A, 'title.woff'))
 # 字幕：得意黑 SmileySans（阿亮 10-20）
 make(os.path.join(WB, '字体/SmileySans-Oblique.ttf'), os.path.join(A, 'sub.woff'))
+# 画面里的大字（导航卡、章节卡、标签）：思源黑体 SC Medium，比标题黑细、清楚（阿亮 10-21）
+make('/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc', os.path.join(A, 'card.woff'), 2)
