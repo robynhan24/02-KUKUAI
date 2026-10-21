@@ -185,9 +185,19 @@
         if (xout > 0 && t > t1 - xout) { const k = prog(t, t1 - xout, t1); a = Math.min(a, 1 - k); z = lerp(1, 1.03, k); }
         for (const c of o.cuts || []) { const d = Math.abs(t - c); if (d < .16) a = Math.min(a, d / .16); }
         const el = o.image ? E.image(o.asset) : E.video(o.asset, srcAt(t), rateAt(t));
+        const layers = (o.layers || []).map(L => ({ r: L.r, el: E.video(L.asset, (t - t0 + (L.off || 0)) % L.len, 1) }));
         ctx.save(); ctx.globalAlpha = a; ctx.translate(960, 540); ctx.scale(z, z); ctx.translate(-960, -540);
         if (o.ih > o.iw) D.rec(ctx, t, el, o.iw, o.ih, {});          // 竖屏手机：外框 + 虚化铺底
-        else D.recFull(ctx, t, el, o.iw, o.ih, { cam: o.cam, marks: o.marks });
+        else {
+          const dim = o.dim ? ease.inOut(prog(t, o.dim[0], o.dim[0] + .35)) * (1 - ease.inOut(prog(t, o.dim[1], o.dim[1] + .3))) : 0;
+          const g = D.recFull(ctx, t, el, o.iw, o.ih, { cam: o.cam, marks: dim > .99 ? [] : o.marks, layers });
+          if (dim > 0 && el) {   // 背景录屏虚化 + 压暗，上面放讲解动画
+            const vw = el.videoWidth || el.width, vh = el.videoHeight || el.height;
+            ctx.save(); ctx.globalAlpha *= dim; ctx.drawImage(D._blurred(el, vw, vh), g.dx, g.dy, o.iw * g.sc, o.ih * g.sc);
+            ctx.fillStyle = 'rgba(8,8,16,.62)'; ctx.fillRect(0, 0, 1920, 1080); ctx.restore();
+            if (o.over) { ctx.save(); ctx.globalAlpha *= dim; o.over(ctx, t, E); ctx.restore(); }
+          }
+        }
         ctx.restore();
         pip(ctx, t, E, t0, t1);
       },
@@ -204,22 +214,30 @@
   }
   // 3D 课件（1992×1440）三个模块的区域
   const M1 = [160, 620, 720, 1180], M2 = [715, 620, 1265, 1180], M3 = [1270, 620, 1830, 1180];
-  const M12 = [150, 610, 1275, 1190];   // 01 + 02 两个模块一起（阿亮 10-20：放大适中，两个动效同时看得到）
+  const M12 = [150, 610, 1275, 1190];
+  // 裁出来的模块视频在原录屏里的位置（裁在卡片之间的空白处）；底图定格在 4.2 秒（这时没有鼠标）
+  const MOD = { m1: { r: [160, 600, 716, 1440], len: 6.8 }, m2: { r: [716, 600, 1274, 1440], len: 10.8 }, m3: { r: [1274, 600, 1830, 1440], len: 7.6 } };
+  const modLayer = (n, off = 0) => ({ asset: n, r: MOD[n].r, len: MOD[n].len, off });
+  // 单独提取出来放大时用的范围：卡片顶到 3D 画面底（标题 + 说明 + 三维图），各模块视频里的位置
+  const CARD = { m1: [172, 623, 705, 1185], m2: [728, 623, 1261, 1185], m3: [1285, 623, 1818, 1185] };   // 01 + 02 两个模块一起（阿亮 10-20：放大适中，两个动效同时看得到）
 
   /* ================= 第 1 段：开头 ================= */
 
+  // 报告录屏 16.0 秒那一帧：参考文献（measure.py 量的：核心论据 [1]–[9] 在 553–2435 × 263–834，补充资料 [10]–[12] 在 553–2181 × 968–1123）
+  const BOX_CORE = [531, 241, 2457, 856], BOX_SUPP = [531, 946, 2195, 1133];
+  const CORE = [614, 241, 2375, 856], SUPP = [614, 946, 2375, 1133];   // 镜头：放大约 1.25 倍，整行都在画面里
   // ① 0–4.93 「来，老师、科研党们，都看过来！你看AI制作的这个3D高数课件，能拖、能转」
   //    开头直接全屏 3D 交互课件高光：全画面 → 推近到 01、02 两个模块（拖曲面、转切平面同时看得到）
   scenes.push(fullScene(0, 4.93, {
-    asset: 'r08', iw: 1992, ih: 1440, xin: 0, src: [[0, .2, 1.3]],
+    asset: 'r08', iw: 1992, ih: 1440, xin: 0, src: [[0, 4.2, 0]], layers: [modLayer('m1'), modLayer('m2', .3)],   // 01 拖锚点 + 02 转切平面同时动
     cam: [[0, null], [1.3, M12, 1.0]],
   }));
 
   // ② 4.93–8.17 「还配了一份文献出处标得清清楚楚的教研报告」报告录屏慢慢上滑一小段到参考文献 → 定格，轻推近，框出整组核心论据
   scenes.push(fullScene(4.93, 8.17, {
-    asset: 'r03', iw: 2560, ih: 1440, src: [[4.93, 15.0, .45], [4.93 + 1.11, 15.5, 0]],
-    cam: [[4.93, null], [6.1, [520, 330, 2480, 1120], .8]],
-    marks: [{ r: [540, 545, 2465, 1118], at: T(6.55), kind: 'box' }],
+    asset: 'r03', iw: 2560, ih: 1440, src: [[4.93, 15.45, .4], [4.93 + 1.375, 16.0, 0]],
+    cam: [[4.93, null], [6.3, CORE, .7]],
+    marks: [{ r: BOX_CORE, at: 7.05, kind: 'box' }],
   }));
 
   // ③ 8.17–11.99 「前阵子有位老师在评论区吐槽，他在做一个高数教研专题」真人
@@ -304,7 +322,7 @@
         if (im) { ctx.save(); ctx.globalAlpha = clamp(k * 1.3); ctx.drawImage(im, x, y, w, h); ctx.restore(); }
         // 「无从下手」：问号弹出
         const q = ease.back(prog(t, T(15.55), T(15.55) + .35));
-        if (q > 0) { ctx.save(); ctx.translate(1560, 360); ctx.scale(q, q); ctx.rotate(Math.sin(t * 5) * .05); D.text(ctx, '？', 0, 0, { size: 300, color: '#f5df27', stroke: '#111', strokeW: 16 }); ctx.restore(); }
+        if (q > 0) { ctx.save(); ctx.translate(1765, 615); ctx.scale(q, q); ctx.rotate(Math.sin(t * 5) * .04); D.text(ctx, '？', 0, 0, { size: 560, color: '#f5df27', stroke: '#111', strokeW: 20 }); ctx.restore(); }
         pip(ctx, t, E, t0, t1);
       },
     });
@@ -362,7 +380,7 @@
   scenes.push(fullScene(31.05, 35.83, {
     asset: 'r01', iw: 2560, ih: 1440, src: [[31.05, 2.15, 1], [32.9, 4.0, 0]],
     cam: [[31.05, null], [32.75, PR]],
-    marks: [{ r: [770, 705, 1850, 755], at: 33.55, dur: .7 }, { r: [670, 825, 1160, 875], at: T(33.70), dur: .45 }],
+    marks: [{ r: [770, 709, 1826, 751], at: 33.55, dur: .7 }, { r: [673, 828, 1155, 870], at: T(33.70), dur: .45 }],
   }));
 
   // 11  35.83–39.62 「哎，可能有人会说，AI搜文献有啥新鲜的？但用过的都知道」真人
@@ -411,11 +429,12 @@
   //     回到查文献录屏：指令里描「知网、百度学术等权威学术数据库」→ 软切到结果页，鼠标划过引用、弹出作者和年份（原速）→ 停在弹窗上推近、框作者和年份
   const RP = [1420, 660, 2380, 1060], tRes = T(48.62);
   scenes.push(fullScene(45.47, T(53.55), {
-    asset: 'r01', iw: 2560, ih: 1440, src: [[45.47, 4.0, 0], [tRes, 17.6, 1], [tRes + 3.4, 21.0, 0]], cuts: [tRes],
-    cam: [[45.47, PR], [tRes, [700, 560, 2500, 1100], 0], [tRes + 3.3, [1250, 620, 2420, 1100]]],   // 软切时直接到位，不先拉远再推近
+    // 结果页：鼠标依次划过引用（原速），停在 25.2 秒那个弹窗上（这一帧光标停在上面的引用标签上，不挡作者和年份）
+    asset: 'r01', iw: 2560, ih: 1440, src: [[45.47, 4.0, 0], [tRes, 21.8, 1], [tRes + 3.4, 25.2, 0]], cuts: [tRes],
+    cam: [[45.47, PR], [tRes, [700, 380, 2500, 960], 0], [tRes + 3.3, [1150, 430, 2450, 860]]],   // 软切时直接到位，不先拉远再推近
     marks: [
-      { r: [1745, 765, 2410, 815], at: T(46.39), end: tRes, dur: .5 }, { r: [608, 825, 670, 875], at: T(46.39) + .5, end: tRes },
-      { r: [1840, 703, 1960, 747], at: tRes + 3.9, kind: 'box' }, { r: [1982, 703, 2052, 747], at: tRes + 4.15, kind: 'box' },
+      { r: [1928, 768, 2412, 811], at: T(46.39), end: tRes, dur: .5 }, { r: [604, 828, 645, 870], at: T(46.39) + .5, end: tRes },
+      { r: [1740, 523, 1842, 566], at: tRes + 3.95, kind: 'box', lw: 4 }, { r: [1855, 523, 1931, 566], at: tRes + 4.2, kind: 'box', lw: 4 },
     ],
   }));
 
@@ -426,20 +445,20 @@
   scenes.push(fullScene(T(55.70), T(59.00), {
     asset: 'r02a', iw: 2560, ih: 1440, src: [[T(55.70), 1.4, 1], [T(55.70) + 1.8, 3.2, 0]],
     cam: [[T(55.70), null], [T(55.70) + 1.6, [480, 1040, 2480, 1300]]],
-    marks: [{ r: [1030, 1115, 1455, 1165], at: T(57.72), dur: .5 }],
+    marks: [{ r: [1026, 1116, 1454, 1160], at: T(57.72), dur: .5 }],
   }));
 
   // 16  59.25–66.45 「针对14篇文献建立完整论证框架，还分好了核心论据和补充资料，连研究缺口都给你点出来了」
   //     梳理结果录屏：开头一段推近（描「14 篇文献」「四段论证」，框「核心论据与补充资料」）→ 拉远、往下滚到实践效果（1.3 倍）→ 推近描研究缺口
   {
-    const t0 = T(59.00), tS = T(63.20), tG = tS + 1.25;
+    const t0 = T(59.00), tS = T(63.20), tG = tS + (10.77 - 9.4) / 1.3;   // tG ≈ 64.5：「研究缺口」那句刚好整句在画面里
     scenes.push(fullScene(t0, SEG3, {
-      asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 11.0, 0]], cuts: [tS],
-      cam: [[t0, [520, 560, 2480, 730], 0], [tS, null, 0], [tG, [520, 360, 2480, 540]]],
+      asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 10.77, 0]], cuts: [tS],
+      cam: [[t0, [520, 560, 2480, 730], 0], [tS, null, 0], [tG, [549, 470, 2449, 590], .6]],
       marks: [
-        { r: [865, 605, 1025, 655], at: T(59.38), end: tS }, { r: [1105, 605, 1960, 655], at: T(60.30), dur: 1.0, end: tS },
-        { r: [1308, 665, 1662, 715], at: T(62.40), end: tS, kind: 'box' },
-        { r: [1625, 402, 2445, 452], at: tG + .55, dur: .45 }, { r: [545, 462, 1170, 512], at: tG + .95, dur: .4 },
+        { r: [866, 609, 1023, 654], at: T(59.38), end: tS }, { r: [1104, 609, 2064, 654], at: T(60.30), dur: 1.0, end: tS },
+        { r: [1355, 668, 1665, 714], at: T(62.40), end: tS, kind: 'box', lw: 3 },
+        { r: [1624, 479, 2448, 521], at: tG + .05, dur: .5 }, { r: [549, 539, 1167, 581], at: tG + .55, dur: .35 },
       ],
     }));
   }
@@ -461,8 +480,8 @@
       asset: 'r03', iw: 2560, ih: 1440, src: [[t0, .4, 1], [tP, 6.0, 0]], cuts: [tP],
       cam: [[t0, null], [t0 + .5, [520, 820, 1520, 1360]], [tP, [1135, 455, 2500, 800], 0]],
       marks: [
-        { r: [2078, 490, 2460, 535], at: tP + .75 }, { r: [1160, 550, 1640, 595], at: tP + 1.0 },
-        { r: [1160, 490, 1636, 535], at: T(72.95), dur: .5 }, { r: [1534, 668, 1880, 713], at: T(75.00), dur: .4 },
+        { r: [2089, 493, 2455, 536], at: tP + .75 }, { r: [1157, 553, 1650, 595], at: tP + 1.0 },
+        { r: [1157, 493, 1640, 536], at: T(72.95), dur: .5 }, { r: [1531, 672, 1877, 716], at: T(75.00), dur: .4 },
       ],
     }));
   }
@@ -470,14 +489,38 @@
   // 19  77.78–80.80 「不过有一说一，我的高数早就还给老师了」真人近景
   scenes.push(anchorFull(T(76.60), T(79.62), { close: true }));
 
-  // 20  80.80–92.0 「但单看这份报告的结构逻辑……而是顺着这个逻辑线铺下来的。参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」
-  //     同一段报告录屏原速连贯往下翻：标题 → 教研背景 → 概念几何解析 → 教学设计方案 → 效果预判 → 参考文献；停在参考文献，推近框「核心论据」、再框「补充资料」
+  // 20  80.80–92.0 「但单看这份报告的结构逻辑，就知道它不是东拼西凑，而是顺着这个逻辑线铺下来的。参考文献里哪些支撑核心结论，哪些是拓展参考，也都分得清清楚楚」
+  //     先定格在报告标题 + 「一、教研背景」，再慢慢往下翻（0.75 倍）；说「逻辑线」时背景虚化压暗，画出「发现问题 → 解析本质 → 给出方案 → 预判效果」；
+  //     说「参考文献里哪些支撑核心结论」时推近定格到参考文献、框核心论据，说「哪些是拓展参考」时移到补充资料再框
   {
-    const t0 = T(79.62), tH = t0 + 7.4;
+    const t0 = T(79.62), tL = T(83.32), tJ = T(85.62), tR = T(85.80), tE = T(87.62);
+    const LOGIC = [['发现问题', '一、教研背景', '#2388FF'], ['解析本质', '二、概念几何解析', '#8b5cf6'], ['给出方案', '三、教学设计方案', '#F5DF27'], ['预判效果', '四、教学效果预判', '#39C872']];
     scenes.push(fullScene(t0, SEG4, {
-      asset: 'r03', iw: 2560, ih: 1440, src: [[t0, 8.6, 1], [tH, 16.0, 0]],
-      cam: [[t0, null], [tH + .1, [520, 160, 2460, 840]], [T(88.40), [520, 520, 2460, 1110]]],
-      marks: [{ r: [545, 250, 2450, 825], at: tH + .8, kind: 'box' }, { r: [545, 950, 2450, 1060], at: T(88.40) + .75, kind: 'box' }],
+      asset: 'r03', iw: 2560, ih: 1440,
+      src: [[t0, 9.0, 0], [t0 + .95, 9.0, .75], [tL, 9.0 + (tL - t0 - .95) * .75, 1.6], [tJ, 16.0, 0]],
+      dim: [tL, tR - .25],
+      cam: [[t0, null], [tR, CORE, .6], [tE, SUPP, .6]],
+      marks: [{ r: BOX_CORE, at: tR + .65, kind: 'box' }, { r: BOX_SUPP, at: tE + .65, kind: 'box' }],
+      over(ctx, t) {
+        const W = 340, H = 168, G = 76, x0 = 960 - (4 * W + 3 * G) / 2, y = 470;
+        LOGIC.forEach(([name, sec, col], i) => {
+          const ta = tL + .15 + i * .42, k = ease.back(prog(t, ta, ta + .32)); if (k <= 0) return;
+          const x = x0 + i * (W + G);
+          if (i > 0) {   // 箭头：从上一个画到这一个
+            const ap = ease.out(prog(t, ta - .2, ta + .05)), ax = x - G + 12, bx = ax + (G - 24) * ap;
+            ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(ax, y); ctx.lineTo(bx, y); ctx.stroke();
+            if (ap > .9) { ctx.beginPath(); ctx.moveTo(bx - 16, y - 14); ctx.lineTo(bx, y); ctx.lineTo(bx - 16, y + 14); ctx.stroke(); }
+            ctx.restore();
+          }
+          ctx.save(); ctx.translate(x + W / 2, y); ctx.scale(k, k);
+          ctx.shadowColor = col; ctx.shadowBlur = 36; D.rr(ctx, -W / 2, -H / 2, W, H, 26); ctx.fillStyle = 'rgba(20,20,32,.9)'; ctx.fill();
+          ctx.shadowBlur = 0; ctx.lineWidth = 5; ctx.strokeStyle = col; ctx.stroke();
+          D.text(ctx, name, 0, -20, { size: 64, color: '#fff', shadow: false });
+          D.text(ctx, sec, 0, 46, { size: 34, color: col, shadow: false });
+          ctx.restore();
+        });
+      },
     }));
   }
 
@@ -489,7 +532,7 @@
 
   // 21  93.20–96.62 「最后我们就能做出开头那个能拖能转的3D课件」3D 课件录屏：滑块转动切平面（原速），推近第二个模块
   scenes.push(fullScene(93.20, T(94.60), {
-    asset: 'r08', iw: 1992, ih: 1440, src: [[93.20, 5.8, 1]],
+    asset: 'r08', iw: 1992, ih: 1440, src: [[93.20, 4.2, 0]], layers: [modLayer('m1', 1.0), modLayer('m2', 1.4)],
     cam: [[93.20, null], [93.9, M12, 1.0]],
   }));
 
@@ -498,19 +541,45 @@
   scenes.push(fullScene(T(94.60), T(100.85), {
     asset: 'r04', iw: 2560, ih: 1440, src: [[T(94.60), .6, 1]],
     cam: [[T(94.60), null], [T(94.60) + .6, [560, 540, 1500, 1320]], [T(94.60) + 3.0, [540, 940, 2500, 1390]], [T(94.60) + 4.6, null]],
-    marks: [{ r: [1110, 700, 1440, 756], at: T(95.47), end: T(94.60) + 3.0, kind: 'box' }],
+    marks: [{ r: [1106, 699, 1366, 755], at: T(95.47), end: T(94.60) + 3.0, kind: 'box', lw: 4 }],
   }));
 
   // 23  102.87–109.42 「它把三个知识点整合在了同一个三维曲面里，拖动锚点或滑块，抽象概念的几何本质」
-  //     3D 课件录屏连贯（1.15 倍）：全画面框出三个模块 → 推近拖锚点 → 移到旋转切平面
+  //     全屏课件 → 三个交互模块从原位置被提取出来、放大并排到画面上半部分，背景全屏课件虚化压暗；01、02、03 同时在动
   {
-    const t0 = T(100.85);
-    scenes.push(fullScene(t0, T(107.40), {
-      asset: 'r08', iw: 1992, ih: 1440, src: [[t0, 0, 1.15]],
-      cam: [[t0, null], [T(104.32), M12, 1.0]],
-      marks: [[185, 640, 420, 680, T(101.29)], [740, 640, 1040, 680, T(101.45)], [1295, 640, 1590, 680, T(101.61)]]
-        .map(([a, b, c, d, at]) => ({ r: [a, b, c, d], at, end: T(104.32), kind: 'box' })),
-    }));
+    const t0 = T(100.85), t1 = T(107.40), tX = t0 + .45, PW = 582, PH = PW * 562 / 533, PG = 40, PY = 140;
+    const NAMES = ['m1', 'm2', 'm3'];
+    scenes.push({
+      kind: 'full', t0, t1, draw(ctx, t, E) {
+        D.bg(ctx, t);
+        let a = ease.out(prog(t, t0, t0 + .35)) * (1 - prog(t, t1 - .22, t1));
+        const k = ease.inOut(prog(t, tX, tX + .75));
+        const base = E.video('r08', 4.2, 0), mv = NAMES.map((n, i) => E.video(n, (t - t0 + [0, .8, 0][i]) % MOD[n].len, 1));
+        ctx.save(); ctx.globalAlpha = a;
+        const g = D.recFull(ctx, t, base, 1992, 1440, { layers: NAMES.map((n, i) => ({ el: mv[i], r: MOD[n].r })) });
+        if (k > 0 && base) {
+          ctx.save(); ctx.globalAlpha = a * k; ctx.drawImage(D._blurred(base, base.videoWidth || 1494, base.videoHeight || 1080), g.dx, g.dy, 1992 * g.sc, 1440 * g.sc);
+          ctx.fillStyle = 'rgba(8,8,16,.6)'; ctx.fillRect(0, 0, 1920, 1080); ctx.restore();
+          NAMES.forEach((n, i) => {
+            const c = CARD[n], m = MOD[n], el = mv[i]; if (!el) return;
+            const from = [g.dx + c[0] * g.sc, g.dy + c[1] * g.sc, (c[2] - c[0]) * g.sc, (c[3] - c[1]) * g.sc];
+            const to = [960 - (3 * PW + 2 * PG) / 2 + i * (PW + PG), PY, PW, PH];
+            const kk = ease.inOut(prog(t, tX + i * .08, tX + i * .08 + .75));
+            const [x, y, w, h] = from.map((v, j) => lerp(v, to[j], kk));
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 40 * kk; ctx.shadowOffsetY = 14 * kk;
+            D.rr(ctx, x, y, w, h, 16); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'transparent';
+            D.rr(ctx, x, y, w, h, 16); ctx.clip();
+            const sw = el.videoWidth || 556, sh = el.videoHeight || 840, fx = sw / (m.r[2] - m.r[0]), fy = sh / (m.r[3] - m.r[1]);
+            ctx.drawImage(el, (c[0] - m.r[0]) * fx, (c[1] - m.r[1]) * fy, (c[2] - c[0]) * fx, (c[3] - c[1]) * fy, x, y, w, h);
+            ctx.restore();
+            ctx.save(); ctx.globalAlpha = a * kk; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; D.rr(ctx, x, y, w, h, 16); ctx.stroke(); ctx.restore();
+          });
+        }
+        ctx.restore();
+        pip(ctx, t, E, t0, t1);
+      },
+    });
   }
 
   // 24  109.42–111.37 「一眼就能看明白。整个流程走下来」真人近景
@@ -522,7 +591,7 @@
     scenes.push(fullScene(t0, T(114.22), {
       asset: 'r05', iw: 2560, ih: 1440, src: [[t0, 1.2, 1], [c1, 5.2, 0], [c2, 12.6, 1.15]], cuts: [c1, c2],
       cam: [[t0, null], [c1, [500, 560, 1800, 900], 0], [c2, null, 0]],
-      marks: [{ r: [552, 630, 1470, 680], at: c1 + .55, end: c2, dur: .5 }, { r: [600, 700, 870, 750], at: c2 + 1.35, kind: 'box' }],
+      marks: [{ r: [552, 633, 1417, 675], at: c1 + .55, end: c2, dur: .5 }, { r: [596, 700, 875, 754], at: c2 + 1.52, kind: 'box', lw: 4 }],
     }));
   }
 
@@ -657,49 +726,7 @@
   /* ---------- 音频 ---------- */
   const audio = [];
   VOICE.forEach(([a, b, t]) => audio.push({ asset: 'voice', at: t, from: a, dur: b - a, gain: 1, fadeIn: .02, fadeOut: .03 }));
-  // 配乐：说话时压低；logo 停顿时抬起来配重击
-  const speech = VOICE.map(([a, b, t]) => [t, t + (b - a)]);
-  const LOW = .16, HIGH = .55;
-  const env = [[0, LOW]];
-  env.push([18.80, LOW], [18.87, .85], [19.75, .7], [19.95, LOW]);
-  env.push([29.70, LOW], [29.95, .5], [30.45, 0]);
-  audio.push({ asset: 'music', at: 0, from: 0, dur: 30.45, gain: 1, fadeIn: .3, fadeOut: .4, env });
-  // 第 2 段换曲：章节卡重击时进，说话压低，段尾淡出
-  const env2 = [[CH1_HIT, .7], [31.0, .7], [31.15, LOW], [66.2, LOW], [66.45, .5], [66.95, 0]];
-  audio.push({ asset: 'music2', at: CH1_HIT - .05, from: 0, dur: 66.95 - CH1_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env2 });
-  const env3 = [[CH2_HIT, .7], [67.6, .7], [67.75, LOW], [SEG4 - .1, LOW], [SEG4 + .3, 0]];
-  audio.push({ asset: 'music3', at: CH2_HIT - .05, from: 0, dur: SEG4 + .3 - CH2_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env3 });
-  const env4 = [[CH3_HIT, .7], [93.15, .7], [93.3, LOW], [SEG5 - .2, LOW], [SEG5 + .3, 0]];
-  audio.push({ asset: 'music4', at: CH3_HIT - .05, from: 0, dur: SEG5 + .3 - CH3_HIT + .05, gain: 1, fadeIn: .05, fadeOut: .4, env: env4 });
-  const env5 = [[SEG5 - .2, LOW], [T(145.75), LOW], [T(145.75) + .3, .5], [DUR - .8, .5], [DUR, 0]];
-  audio.push({ asset: 'music5', at: SEG5 - .2, from: 0, dur: DUR - SEG5 + .2, gain: 1, fadeIn: .5, fadeOut: .8, env: env5 });
-  const sfx = (asset, at, gain = .6) => audio.push({ asset, at, gain });
-  // 转场：每次换画面一个轻「嗖」（峰值 0.7 秒对齐切点）；章节卡、logo 有自己的重击
-  const OWN = [CH1, 66.45, 92.0];   // logo、章节卡：有自己的蓄力 + 重击
-  scenes.forEach((sc, i) => { if (i && !OWN.some(x => Math.abs(x - sc.t0) < .02)) sfx('swish', sc.t0 - .7, .28); });
-  // 录屏里的马克笔 / 框选：马克笔沙沙声、框选轻「啵」；同一录屏里跳一段（软切）也给一个轻「嗖」
-  scenes.filter(sc => sc.kind === 'full').forEach(sc => {
-    for (const m of sc.o.marks || []) if (m.at < sc.t1) m.kind === 'box' ? sfx('pop', m.at, .35) : sfx('scribble', m.at, .3);
-    for (const c of sc.o.cuts || []) sfx('swish', c - .7, .22);
-  });
-  // 第 1 段动画
-  sfx('pop', 12.02, .5); sfx('pop', 12.2, .45); sfx('pop', 12.37, .45); sfx('pop', 12.53, .45);
-  [0, 1, 2, 3].forEach(i => sfx('swish', 11.99 + i * .14 - .45, .22)); sfx('swish', T(13.85) - .45, .4); sfx('pop', T(15.55), .7);
-  sfx('rise', 18.87 + .2 - 1.43, .7);                     // 蓄力，结尾对齐 logo
-  sfx('thud', 18.87 - .17 + .2, .9); sfx('dong', 18.87 - .21 + .2, .55); sfx('shine', 19.25, .5);
-  NAV.forEach(([, , ta]) => sfx('pop', ta, .55));
-  // 章节卡
-  for (const H of [CH1_HIT, CH2_HIT, CH3_HIT]) { sfx('rise', H - 1.43, .6); sfx('thud', H - .17, .85); sfx('dong', H - .21, .45); }
-  // 第 2 段：散乱结果 + 放大镜
-  [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(39.62) + i * .07 + .1, .3));
-  sfx('swish', T(41.58) - .55, .4); sfx('swish', T(42.24) - .55, .4);
-  [0, 1, 2, 3, 4, 5].forEach(i => sfx('pop', T(43.38) + .1 + i * .17, .4));
-  // 第 5 段：对话气泡 → 三步链；三张成果收拢进 logo；多端
-  sfx('pop', T(123.25), .5); sfx('swish', T(124.45) - .5, .3);
-  [124.75, 125.29, 125.77].forEach(v => sfx('pop', T(v), .45));
-  [128.83, 129.79, 130.87].forEach(v => sfx('pop', T(v) + .1, .45));
-  sfx('thud', T(133.16) - .17 + .08, .6); sfx('shine', T(133.3), .4); sfx('shine', T(134.06), .3);
-  sfx('pop', T(138.48), .5); sfx('pop', T(139.08), .5);
+  // 阿亮 10-21：去掉配乐和音效，只保留口播
 
   /* ---------- 字幕叠加 ---------- */
   function overlay(ctx, t) {
@@ -717,11 +744,11 @@
     sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },
     k_home: { type: 'image', src: A + 'k_home.jpg' }, k_web: { type: 'image', src: A + 'k_web.png' },
     logo: { type: 'image', src: A + 'logo.png' },
-    voice: { type: 'audio', src: A + 'voice.mp3' }, music: { type: 'audio', src: A + 'music.mp3' }, music2: { type: 'audio', src: A + 'music2.mp3' }, music3: { type: 'audio', src: A + 'music3.mp3' }, music4: { type: 'audio', src: A + 'music4.mp3' }, music5: { type: 'audio', src: A + 'music5.mp3' },
+    voice: { type: 'audio', src: A + 'voice.mp3' },
+    m1: { type: 'video', src: { mp4: A + 'm1.mp4', webm: A + 'm1.webm' } }, m2: { type: 'video', src: { mp4: A + 'm2.mp4', webm: A + 'm2.webm' } }, m3: { type: 'video', src: { mp4: A + 'm3.mp4', webm: A + 'm3.webm' } },
   };
   // 抠好背景的 3D 空镜（key_3d.py，20 帧/秒）
   for (let i = 0; i < 68; i++) assets['k3d' + i] = { type: 'image', src: A + `k3d/k3d_${String(i).padStart(3, '0')}.webp` };
-  for (const n of ['whoosh', 'swish', 'rise', 'thud', 'dong', 'pop', 'shine', 'scribble']) assets[n] = { type: 'audio', src: A + `sfx_${n}.mp3` };
 
   window.PROJECT = {
     title: '库库AI_第1-5段_完整版', width: 1920, height: 1080, duration: DUR,

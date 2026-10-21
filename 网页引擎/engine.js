@@ -374,29 +374,43 @@
       }
       return cur;
     },
-    /** 全屏录屏（铺满 1920×1080）。el 的画面对应坐标空间 iw×ih（原始录屏像素）；cam 镜头推拉；marks 马克笔 / 框选 */
+    /** 全屏录屏（铺满 1920×1080）。el 的画面对应坐标空间 iw×ih（原始录屏像素）；cam 镜头推拉；
+     *  o.layers：[{el, r:[x0,y0,x1,y1]}] 叠在录屏上的局部视频（同一坐标，严丝合缝），比如 3D 课件里单独裁出来的模块；
+     *  o.marks：马克笔 / 框选，r 用量好的字的范围（measure.py）。返回 {dx, dy, sc}（录屏坐标 → 画面）。 */
     recFull(ctx, t, el, iw, ih, o = {}) {
       const c = D.camAt(o.cam, t, iw, ih), k0 = Math.max(1920 / iw, 1080 / ih), sc = k0 * c.z;
       let dx = 960 - c.cx * sc, dy = 540 - c.cy * sc;
       dx = iw * sc >= 1920 ? clamp(dx, 1920 - iw * sc, 0) : (1920 - iw * sc) / 2;
       dy = ih * sc >= 1080 ? clamp(dy, 1080 - ih * sc, 0) : (1080 - ih * sc) / 2;
+      ctx.imageSmoothingQuality = 'high';
       if (el) {
         const vw = el.videoWidth || el.naturalWidth || el.width, vh = el.videoHeight || el.naturalHeight || el.height;
-        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(el, 0, 0, vw, vh, dx, dy, iw * sc, ih * sc);
       }
-      for (const m of o.marks || []) {
+      for (const L of o.layers || []) {
+        if (!L.el) continue;
+        const [x0, y0, x1, y1] = L.r;
+        ctx.drawImage(L.el, dx + x0 * sc, dy + y0 * sc, (x1 - x0) * sc, (y1 - y0) * sc);
+      }
+      D.marksOn(ctx, t, o.marks, dx, dy, sc);
+      return { dx, dy, sc };
+    },
+    /** 马克笔 / 框选（画在录屏坐标上；跟着画面一起淡入淡出） */
+    marksOn(ctx, t, marks, dx, dy, sc) {
+      const A0 = ctx.globalAlpha;
+      for (const m of marks || []) {
         if (t < m.at || (m.end != null && t >= m.end)) continue;
         const p = ease.out(prog(t, m.at, m.at + (m.dur || .35))), fo = m.end != null ? 1 - prog(t, m.end - .2, m.end) : 1;
         const x = dx + m.r[0] * sc, y = dy + m.r[1] * sc, w = (m.r[2] - m.r[0]) * sc, h = (m.r[3] - m.r[1]) * sc;
-        ctx.save(); ctx.globalAlpha = fo;
-        if (m.kind === 'box') {   // 框选：橙红圆角框，从大收到位
-          const g = 1 + (1 - p) * .12; ctx.globalAlpha = fo * p;
-          ctx.lineWidth = 6; ctx.strokeStyle = '#ff5a1f'; ctx.shadowColor = 'rgba(255,90,31,.55)'; ctx.shadowBlur = 16;
-          D.rr(ctx, x + w / 2 - (w / 2 + 10) * g, y + h / 2 - (h / 2 + 8) * g, (w + 20) * g, (h + 16) * g, 12); ctx.stroke();
+        ctx.save();
+        if (m.kind === 'box') {   // 框选：橙红圆角框，框在量好的范围上（不压字），从稍大收到位
+          const g = 1 + (1 - p) * .08; ctx.globalAlpha = A0 * fo * p;
+          ctx.lineWidth = m.lw || 5; ctx.strokeStyle = '#ff5a1f'; ctx.shadowColor = 'rgba(255,90,31,.5)'; ctx.shadowBlur = m.lw && m.lw < 4 ? 6 : 14;
+          D.rr(ctx, x + w / 2 - w / 2 * g, y + h / 2 - h / 2 * g, w * g, h * g, Math.min(12, h / 4)); ctx.stroke();
         } else {                   // 马克笔描色：亮黄，正片叠底，从左往右涂过去
+          ctx.globalAlpha = A0 * fo;
           ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = 'rgba(255,224,40,.85)';
-          D.rr(ctx, x - 4, y + h * .08, (w + 8) * p, h * .84, 5); ctx.fill();
+          D.rr(ctx, x, y, w * p, h, 5); ctx.fill();
         }
         ctx.restore();
       }
