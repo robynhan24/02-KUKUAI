@@ -328,7 +328,23 @@
     });
   }
 
-  scenes.push(blend(S5, S6));
+  scenes.push({ kind: 'gfx', t0: S5.t0, t1: S6.t1, draw(ctx, t, E) {
+    const a0 = S6.t0 - .3, a1 = S6.t0 + .4;
+    if (t < a0) return S5.draw(ctx, t, E);
+    if (t >= a1) return S6.draw(ctx, t, E);
+    const k = ease.inOut(prog(t, a0, a1));
+    // 两个画面各自先画到离屏画布（它们内部会改 globalAlpha），再按转场进度合成
+    if (!window.__xf) window.__xf = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; return c; });
+    const [cA, cB] = window.__xf;
+    D.bg(ctx, t); D.noBg = true; D.noPip = true;
+    try {
+      for (const [c, sc, tt] of [[cA, S5, t], [cB, S6, Math.max(t, S6.t0)]]) { const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 1920, 1080); g.globalAlpha = 1; sc.draw(g, tt, E); }
+    } finally { D.noBg = false; D.noPip = false; }
+    const sa = lerp(1, 1.18, k), sb = lerp(.86, 1, k);
+    ctx.save(); ctx.globalAlpha = 1 - k; ctx.drawImage(cA, 960 - 960 * sa, 500 - 500 * sa, 1920 * sa, 1080 * sa); ctx.restore();
+    ctx.save(); ctx.globalAlpha = k; ctx.drawImage(cB, 960 - 960 * sb, 500 - 500 * sb, 1920 * sb, 1080 * sb); ctx.restore();
+    pip(ctx, t, E, S5.t0, S6.t1);
+  } });
 
   // ⑤ 16.11–25.69 「哎，底下有网友就推荐了一个叫库库AI的工具。我拿来一试，还真能一条龙跑下来。那今天我就手把手带你做一个完整的教研专题」
   //    真人近景一个镜头接下去（两句中间不转场）；说到「库库AI」时 logo 直接出现在右边空白处（不加圆圈）
@@ -447,17 +463,75 @@
   }));
 
   // 16  59.25–66.45 「针对14篇文献建立完整论证框架，还分好了核心论据和补充资料，连研究缺口都给你点出来了」
-  //     梳理结果录屏：开头一段推近（描「14 篇文献」「四段论证」，框「核心论据与补充资料」）→ 拉远、往下滚到实践效果（1.3 倍）→ 推近描研究缺口
+  //     梳理结果录屏：推近描「14 篇文献」「四段论证逻辑」→ 背景虚化压暗，四段论证（概念定义 → 几何本质 → 教学路径 → 实践效果）的截图依次出现、箭头串起来
+  //     → 说「核心论据和补充资料」时换成录屏里的两份文献清单截图 → 背景恢复，已滚到「研究缺口」那句，推近马克笔描
   {
-    const t0 = T(59.00), tS = T(63.20), tG = tS + (10.77 - 9.4) / 1.3;   // tG ≈ 64.5：「研究缺口」那句刚好整句在画面里
+    const t0 = T(59.00), tD = T(60.45), tC = T(61.85), tU = T(64.0), tS = T(62.0), tG = tS + (10.77 - 9.4) / 1.3;
+    const GAP = [549, 470, 2449, 590];
+    // 四段论证：录屏里各段的标题 + 第一段正文（prep 时从原录屏截出，1964 宽）
+    const LC = [['lc1', 312, '01', '概念定义', '#2388FF'], ['lc2', 314, '02', '几何本质', '#8b5cf6'], ['lc3', 252, '03', '教学路径', '#F5DF27'], ['lc4', 314, '04', '实践效果', '#39C872']];
+    const CW = 1150, CK = CW / 1964;
+    const badge = (ctx, x, y, num, name, col, a = 1) => {
+      ctx.save(); ctx.globalAlpha *= a; ctx.font = '700 30px "KTitle", "PingFang SC", sans-serif';
+      const tw = ctx.measureText(num + '  ' + name).width + 44;
+      ctx.shadowColor = col; ctx.shadowBlur = 16; D.rr(ctx, x, y, tw, 46, 23); ctx.fillStyle = col; ctx.fill(); ctx.shadowBlur = 0;
+      D.text(ctx, num + '  ' + name, x + tw / 2, y + 25, { size: 30, color: col === '#F5DF27' ? '#15151c' : '#fff', shadow: false });
+      ctx.restore();
+    };
+    const card = (ctx, im, x, y, w, h, a, s = 1) => {
+      ctx.save(); ctx.globalAlpha *= a; ctx.translate(x + w / 2, y + h / 2); ctx.scale(s, s); ctx.translate(-(x + w / 2), -(y + h / 2));
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 36; ctx.shadowOffsetY = 12;
+      D.rr(ctx, x, y, w, h, 14); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowColor = 'transparent';
+      ctx.save(); D.rr(ctx, x, y, w, h, 14); ctx.clip(); if (im) ctx.drawImage(im, x, y, w, h); ctx.restore();
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.6)'; D.rr(ctx, x, y, w, h, 14); ctx.stroke();
+      ctx.restore();
+    };
     scenes.push(fullScene(t0, SEG3, {
-      asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 10.77, 0]], cuts: [tS],
-      cam: [[t0, [520, 560, 2480, 730], 0], [tS, null, 0], [tG, [549, 470, 2449, 590], .6]],
+      asset: 'r02b', iw: 2560, ih: 1440, src: [[t0, .5, 0], [tS, 9.4, 1.3], [tG, 10.77, 0]],
+      cam: [[t0, [520, 560, 2480, 730], 0], [tS, GAP, 0]],
+      dim: [tD, tU],
       marks: [
-        { r: [866, 609, 1023, 654], at: T(59.38), end: tS }, { r: [1104, 609, 2064, 654], at: T(60.30), dur: 1.0, end: tS },
-        { r: [1355, 668, 1665, 714], at: T(62.40), end: tS, kind: 'box', lw: 3 },
-        { r: [1624, 479, 2448, 521], at: tG + .05, dur: .5 }, { r: [549, 539, 1167, 581], at: tG + .55, dur: .35 },
+        { r: [866, 609, 1023, 654], at: T(59.38), end: tD + .35 }, { r: [1104, 609, 2064, 654], at: T(59.85), dur: .55, end: tD + .35 },
+        { r: [1624, 479, 2448, 521], at: tU + .2, dur: .5 }, { r: [549, 539, 1167, 581], at: tU + .7, dur: .35 },
       ],
+      over(ctx, t, E) {
+        // ① 四段论证：阶梯排开，前一张底部引出折线箭头到下一张
+        const outA = 1 - ease.inOut(prog(t, tC - .05, tC + .3));
+        if (outA > 0) {
+          const pos = LC.map(([n, h], i) => ({ x: 130 + i * 190, y: 48 + i * 212, w: CW, h: h * CK }));
+          LC.forEach(([n, , num, name, col], i) => {
+            const ta = tD + .08 + i * .26, k = ease.out(prog(t, ta, ta + .36)); if (k <= 0) return;
+            const P = pos[i];
+            if (i > 0) {   // 箭头：上一张左下 → 往下 → 往右进这一张
+              const Q = pos[i - 1], ap = ease.inOut(prog(t, ta - .22, ta + .05));
+              const ax = Q.x + 70, ay = Q.y + Q.h + 4, by = P.y + P.h / 2, bx = P.x - 6;
+              const L1 = by - ay, L2 = bx - ax, d = (L1 + L2) * ap;
+              ctx.save(); ctx.globalAlpha *= outA; ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.lineCap = ctx.lineJoin = 'round'; ctx.shadowColor = col; ctx.shadowBlur = 12;
+              ctx.beginPath(); ctx.moveTo(ax, ay);
+              let ex = ax, ey = ay + Math.min(d, L1); ctx.lineTo(ex, ey);
+              if (d > L1) { ex = ax + (d - L1); ctx.lineTo(ex, by); ey = by; }
+              ctx.stroke();
+              if (ap > .95) { ctx.beginPath(); ctx.moveTo(ex - 14, ey - 12); ctx.lineTo(ex, ey); ctx.lineTo(ex - 14, ey + 12); ctx.stroke(); }
+              ctx.restore();
+            }
+            ctx.save(); ctx.globalAlpha *= outA; ctx.translate((1 - k) * 60, 0);
+            card(ctx, E.image(n), P.x, P.y, P.w, P.h, k, lerp(.96, 1, k));
+            badge(ctx, P.x + P.w - 250, P.y - 22, num, name, col, k);
+            ctx.restore();
+          });
+        }
+        // ② 核心论据 + 补充资料：两份清单截图上下排开
+        const BK = 1277 / 1964, X = 960 - 1277 / 2;
+        [['core', 673, 40, T(62.35), '一级证据', '核心论据', '#2388FF'], ['supp', 548, 40 + 673 * BK + 26, T(63.15), '二级证据', '补充资料', '#39C872']].forEach(([n, h, y, ta, num, name, col]) => {
+          const k = ease.out(prog(t, Math.max(ta, tC + .1), Math.max(ta, tC + .1) + .45)); if (k <= 0) return;
+          ctx.save(); ctx.translate(0, (1 - k) * 50);
+          card(ctx, E.image(n), X, y, 1277, h * BK, k);
+          // 卡片左侧的彩色竖条 + 右上角标签
+          ctx.save(); ctx.globalAlpha *= k; ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14; D.rr(ctx, X - 16, y + 10, 6, h * BK - 20, 3); ctx.fill(); ctx.restore();
+          badge(ctx, X + 1277 - 270, y - 18, name, num, col, k);
+          ctx.restore();
+        });
+      },
     }));
   }
 
@@ -768,8 +842,10 @@
   // 阿亮 10-21：去掉配乐和音效，只保留口播
 
   /* ---------- 字幕叠加 ---------- */
+  // 阿亮 10-21：字幕不要标点；顿号「、」换成空格
+  const clean = s => s.replace(/、/g, ' ').replace(/[，。！？：；「」“”‘’（）《》…,.!?:;"()]/g, '').replace(/\s+/g, ' ').trim();
   function overlay(ctx, t) {
-    for (const [a, b, s] of SUBS) if (t >= a && t < b) { D.subtitle(ctx, s, 1); break; }
+    for (const [a, b, s] of SUBS) if (t >= a && t < b) { D.subtitle(ctx, clean(s), 1); break; }
   }
 
   const assets = {
@@ -778,6 +854,8 @@
     r01: { type: 'video', src: { mp4: A + 'r01.mp4', webm: A + 'r01.webm' } }, r02a: { type: 'video', src: { mp4: A + 'r02a.mp4', webm: A + 'r02a.webm' } }, r02b: { type: 'video', src: { mp4: A + 'r02b.mp4', webm: A + 'r02b.webm' } },
     r03: { type: 'video', src: { mp4: A + 'r03.mp4', webm: A + 'r03.webm' } }, r04: { type: 'video', src: { mp4: A + 'r04.mp4', webm: A + 'r04.webm' } }, r05: { type: 'video', src: { mp4: A + 'r05.mp4', webm: A + 'r05.webm' } },
     r08: { type: 'video', src: { mp4: A + 'r08.mp4', webm: A + 'r08.webm' } }, c07: { type: 'video', src: { mp4: A + 'c07.mp4', webm: A + 'c07.webm' } },
+    lc1: { type: 'image', src: A + 'lc1.jpg' }, lc2: { type: 'image', src: A + 'lc2.jpg' }, lc3: { type: 'image', src: A + 'lc3.jpg' }, lc4: { type: 'image', src: A + 'lc4.jpg' },
+    core: { type: 'image', src: A + 'core.jpg' }, supp: { type: 'image', src: A + 'supp.jpg' },
     gs1: { type: 'image', src: A + 'gs1.jpg' }, gs2: { type: 'image', src: A + 'gs2.jpg' },
     gs3: { type: 'image', src: A + 'gs3.jpg' }, gs4: { type: 'image', src: A + 'gs4.jpg' },
     sort0: { type: 'image', src: A + 'sort0.jpg' }, rp_h1: { type: 'image', src: A + 'rp_h1.jpg' }, c08still: { type: 'image', src: A + 'c08still.jpg' },

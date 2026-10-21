@@ -290,6 +290,7 @@
     rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); },
     /** 背景：黑底 + 淡淡的白色网格（阿亮 10-20：所有黑色背景都换成网格，线条淡显） */
     bg(ctx, t, o = {}) {
+      if (D.noBg) return;   // 转场时由外面统一画一次底，避免网格跟着缩放
       const W = 1920, H = 1080, s = 112;
       ctx.fillStyle = '#030304'; ctx.fillRect(0, 0, W, H);
       ctx.strokeStyle = 'rgba(255,255,255,.11)'; ctx.lineWidth = 1.5; ctx.beginPath();
@@ -324,13 +325,17 @@
     },
     /** 主播圆形小窗 */
     pip(ctx, el, src, cx, cy, d, o = {}) {
+      // 阿亮 10-21：边缘用白色细线 + 柔和的小光晕（点缀，不夸张）
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 30;
-      ctx.beginPath(); ctx.arc(cx, cy, d / 2 + 6, 0, Math.PI * 2); ctx.fillStyle = o.ring || '#8b5cf6'; ctx.fill();
+      ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 6;
+      ctx.beginPath(); ctx.arc(cx, cy, d / 2, 0, Math.PI * 2); ctx.fillStyle = '#222'; ctx.fill();
       ctx.restore(); ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, d / 2, 0, Math.PI * 2); ctx.clip();
       ctx.fillStyle = '#222'; ctx.fillRect(cx - d / 2, cy - d / 2, d, d);
       if (el) ctx.drawImage(el, src[0], src[1], src[2], src[3], cx - d / 2, cy - d / 2, d, d);
+      ctx.restore(); ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, d / 2 + 1, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineWidth = 2.5; ctx.shadowColor = 'rgba(255,255,255,.75)'; ctx.shadowBlur = 12; ctx.stroke();
       ctx.restore();
     },
     /** 大字：描边 + 阴影 */
