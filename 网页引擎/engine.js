@@ -367,8 +367,8 @@
     /** 大字：描边 + 阴影 */
     text(ctx, s, x, y, o = {}) {
       ctx.save();
-      // 阿亮 10-21：画面里的大字默认用思源黑体 Medium（KCard），不再用很粗的标题黑；要粗体特效字时传 font: 'title'
-      const fam = o.font === 'title' ? '"KTitle","Noto Sans SC",sans-serif' : (o.font || '"KCard","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif');
+      // 阿亮 10-21：画面里的大字默认和字幕同一个字体（得意黑 KSub）；要粗体特效字时传 font: 'title'
+      const fam = o.font === 'title' ? '"KTitle","Noto Sans SC",sans-serif' : (o.font || '"KSub","KCard","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif');
       ctx.font = `${o.weight || (o.font === 'title' ? 900 : 'normal')} ${o.size || 80}px ${fam}`;
       ctx.textAlign = o.align || 'center'; ctx.textBaseline = 'middle';
       if (o.shadow !== false) { ctx.shadowColor = o.shadow || 'rgba(0,0,0,.65)'; ctx.shadowBlur = o.blur || 24; ctx.shadowOffsetY = 6; }

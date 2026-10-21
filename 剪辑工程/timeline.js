@@ -377,8 +377,8 @@
   const NAV = [['查文献', '#2388FF', T(25.80)], ['出报告', '#F5DF27', T(26.25)], ['做课件', '#39C872', T(26.65)]];
   /** 导航卡：reveal[i] = 名字揭晓时间（-1 = 已揭晓）；focus = 当前章节（其余压暗），-1 = 不压暗 */
   function navDraw(ctx, t, t0, reveal, focus, o = {}) {
-    // 阿亮 10-21：整体放大到画面中间约 1150×770；字换成思源黑体 Medium，不再用很粗的标题黑
-    const bw = 1100, bh = 212, gap = 70, CX = 1004, top = 115;
+    // 阿亮 10-21：三张卡整体约 1130×727，居画面正中；字和字幕同一个字体（得意黑）
+    const bw = 1130, bh = 199, gap = 65, CX = 960, top = 540 - (3 * bh + 2 * gap) / 2;
     NAV.forEach(([name, col], i) => {
       const ta = reveal[i], y = top + i * (bh + gap), x = CX - bw / 2;
       const inK = ease.out(prog(t, t0 + i * .07, t0 + i * .07 + .3)), on = ta < 0 ? 1 : ease.out(prog(t, ta, ta + .25));
@@ -389,11 +389,11 @@
       else if (on > 0) { ctx.save(); ctx.globalAlpha = inK * dim * on * .2; D.rr(ctx, x, y, bw, bh, 26); ctx.fillStyle = col; ctx.fill(); ctx.restore(); }
       D.rr(ctx, x, y, bw, bh, 26); ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.globalAlpha = inK * dim * lerp(.55, 1, on); ctx.stroke();
       ctx.globalAlpha = inK * dim;
-      ctx.beginPath(); ctx.arc(x + 135, y + bh / 2, 64, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.stroke();
-      D.text(ctx, String(i + 1), x + 135, y + bh / 2 + 2, { size: 80, color: col, shadow: false });
+      ctx.beginPath(); ctx.arc(x + 130, y + bh / 2, 62, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = col; ctx.stroke();
+      D.text(ctx, String(i + 1), x + 130, y + bh / 2 + 3, { size: 84, color: col, shadow: false });
       const label = on > .5 ? name : '？ ？ ？';
-      ctx.save(); const sc = on > .5 && ta >= 0 ? lerp(1.2, 1, ease.out(prog(t, ta + .12, ta + .35))) : 1; ctx.translate(x + 630, y + bh / 2 + 2); ctx.scale(sc, sc);
-      D.text(ctx, label, 0, 0, { size: 112, color: '#fff', blur: 16 }); ctx.restore();
+      ctx.save(); const sc = on > .5 && ta >= 0 ? lerp(1.2, 1, ease.out(prog(t, ta + .12, ta + .35))) : 1; ctx.translate(x + 620, y + bh / 2 + 4); ctx.scale(sc, sc);
+      D.text(ctx, label, 0, 0, { size: 124, color: '#fff', blur: 16 }); ctx.restore();
       ctx.restore();
     });
   }
@@ -495,7 +495,7 @@
     const LC = [['lc1', 312, '01', '概念定义', '#2388FF'], ['lc2', 314, '02', '几何本质', '#8b5cf6'], ['lc3', 252, '03', '教学路径', '#F5DF27'], ['lc4', 314, '04', '实践效果', '#39C872']];
     const CW = 1150, CK = CW / 1964;
     const badge = (ctx, x, y, num, name, col, a = 1) => {
-      ctx.save(); ctx.globalAlpha *= a; ctx.font = '30px "KCard", "PingFang SC", sans-serif';
+      ctx.save(); ctx.globalAlpha *= a; ctx.font = '30px "KSub", "PingFang SC", sans-serif';
       const tw = ctx.measureText(num + '  ' + name).width + 44;
       ctx.shadowColor = col; ctx.shadowBlur = 16; D.rr(ctx, x, y, tw, 46, 23); ctx.fillStyle = col; ctx.fill(); ctx.shadowBlur = 0;
       D.text(ctx, num + '  ' + name, x + tw / 2, y + 25, { size: 30, color: col === '#F5DF27' ? '#15151c' : '#fff', shadow: false });
@@ -735,7 +735,7 @@
           ctx.save(); D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.clip(); ctx.drawImage(im, c.x, c.y, c.w, h); ctx.restore();
           ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.55)'; D.rr(ctx, c.x, c.y, c.w, h, 18); ctx.stroke();
           if (c.label) {   // 卡片上方的小标签
-            ctx.font = '34px "KCard", "PingFang SC", sans-serif'; const tw = ctx.measureText(c.label).width + 56;
+            ctx.font = '34px "KSub", "PingFang SC", sans-serif'; const tw = ctx.measureText(c.label).width + 56;
             D.rr(ctx, c.x, c.y - 66, tw, 52, 26); ctx.fillStyle = c.col; ctx.fill();
             D.text(ctx, c.label, c.x + tw / 2, c.y - 38, { size: 34, color: '#fff', shadow: false });
           }
